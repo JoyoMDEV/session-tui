@@ -1,19 +1,26 @@
 # sessions
 
-A terminal UI to find and resume your [Claude Code](https://claude.com/claude-code) sessions.
+A logbook for your [Claude Code](https://claude.com/claude-code) sessions: titles, tags and notes that the agent keeps for you, searchable across all your projects.
 
-Claude Code prints a `claude --resume <session_id>` hint when a session ends, but nothing helps you find it again a week later. `sessions` registers every session, lets the agent give it a short title, and shows them in a searchable list. Pick one and it resumes in the right directory.
+Claude Code's own `claude --resume` picker is good for jumping back into recent work in the current repository. `sessions` is for finding work by what it was about, and keeping that around:
 
-- Fuzzy search over titles, directories, tags and notes
-- Shows the title, git branch and pull request Claude Code recorded itself, so old sessions are usable without naming them first
-- Conversation preview before you resume
-- Tags and notes, e.g. a ticket key
-- Import of sessions that existed before you installed the tool
-- Sessions whose transcript has been deleted are marked and can be pruned
+- **The agent keeps the log.** A hook tells the agent its session ID and asks it to give the session a title once the topic is clear, and to tag it with the ticket key if there is one. You don't have to name anything by hand.
+- **Find work by ticket, branch or PR.** Tags, notes, branch and pull request URL are all searchable, across every project. `^B` narrows the list to the branch you have checked out.
+- **Resume where the session lived.** Enter changes into the session's original directory and resumes there, optionally with extra `claude` flags such as `--fork-session`.
+- **The history outlives Claude's cleanup.** Claude Code deletes old transcripts after 30 days by default. `sessions` keeps the entry, with its title, branch, PR, tags and note, so you can still tell what you worked on back then. Such a session can no longer be resumed.
+- **A plain JSON file you own.** Everything is in `sessions.json`, and `sessions list` prints it for scripts.
+
+It also previews a conversation before you resume it, and imports the sessions you had before you installed it.
 
 Unix only (macOS, Linux).
 
 ## Install
+
+**Homebrew** (macOS and Linux):
+
+```sh
+brew install JoyoMDEV/tap/sessions
+```
 
 **Install script** (macOS and Linux). It downloads the latest release for your machine, checks it against the published SHA-256 file and installs it to `~/.local/bin`:
 
@@ -137,15 +144,13 @@ When you resume a session that has a title from `sessions`, the hook also passes
 
 Claude Code deletes old transcripts (30 days by default, see `cleanupPeriodDays` in its settings). `sessions` keeps the entry, but a session without a transcript can't be resumed: it is marked `✗`, and `sessions prune` removes such entries. Raise `cleanupPeriodDays` if you want to find sessions for longer.
 
-## Compared with `claude --resume`
+## Next to `claude --resume`
 
-Claude Code has its own picker. As documented at the time of writing, it covers search, preview, rename, git branch, worktrees and PR lookup. `sessions` overlaps with it on purpose and adds:
+Use Claude Code's picker to jump back into recent work in the current repository. As documented at the time of writing, it has previews, renaming, a branch filter, worktree grouping and a lookup by pull request URL, and `sessions` does not try to replace those.
 
-- tags and notes (the built-in picker has none),
-- a view across all projects by default, resuming straight in the session's own directory,
-- extra `claude` flags per resume, such as `--fork-session`.
+Use `sessions` when you want to find work by ticket, branch or note across all projects, add context of your own, or look back further than Claude Code keeps transcripts. Its documentation mentions no tags or notes, and it shows the current repository by default; `Ctrl+A` widens it to all projects.
 
-The built-in picker has things `sessions` doesn't: worktree grouping, grouped forks and PR URL search.
+The two share names where it matters: on resume the hook passes your title to Claude Code, so it shows up in its picker too.
 
 ## Development
 
@@ -156,7 +161,7 @@ cargo test
 claude plugin validate --strict .
 ```
 
-`install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux. The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
+`install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux, publishes them as a GitHub release and updates the formula in the [Homebrew tap](https://github.com/JoyoMDEV/homebrew-tap). The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
 
 ## License
 
