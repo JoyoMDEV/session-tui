@@ -110,6 +110,7 @@ The agent calls these, but you can too.
 | Command | What it does |
 | --- | --- |
 | `sessions setup` | Add the SessionStart hook to Claude Code's `settings.json` |
+| `sessions doctor` | Check the install and say how to fix what's wrong |
 | `sessions title [--id ID] <title>` | Set the title |
 | `sessions tag [--id ID] <tag>...` | Add tags |
 | `sessions note [--id ID] <text>` | Set the note (empty text clears it) |
@@ -119,6 +120,18 @@ The agent calls these, but you can too.
 | `sessions list` | Print all entries |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
+
+## Troubleshooting
+
+If the list is empty, titles stop appearing, or sessions aren't being registered, run:
+
+```sh
+sessions doctor
+```
+
+It checks that the binary is on your `PATH`, that `claude` can be found, that the hook is registered and points at a binary that still exists, that `sessions.json` is readable, and that Claude Code's transcripts still parse. Each problem comes with the command that fixes it. It exits with 1 if it finds a problem, and warnings don't change the exit code.
+
+The transcript check matters after a Claude Code update. The format is internal to Claude Code, so if it changes, `doctor` says so instead of leaving you with an empty list.
 
 ## Configuration
 
