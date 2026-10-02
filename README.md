@@ -20,7 +20,7 @@ Download the archive for your platform from the releases page, verify it against
 Or build from source (Rust 1.88 or newer):
 
 ```sh
-git clone https://github.com/<owner>/session-tui
+git clone https://github.com/JoyoMDEV/session-tui
 cd session-tui
 cargo install --path .
 ```
@@ -34,7 +34,7 @@ The hook registers each session and tells the agent its session ID and how to se
 **As a plugin** (install the binary first):
 
 ```text
-/plugin marketplace add <owner>/session-tui
+/plugin marketplace add JoyoMDEV/session-tui
 /plugin install sessions@session-tui
 ```
 
