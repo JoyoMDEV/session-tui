@@ -12,8 +12,8 @@ use ratatui::{
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState,
+        Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+        ScrollbarOrientation, ScrollbarState,
     },
 };
 use std::collections::HashSet;
@@ -44,6 +44,8 @@ enum Mode {
     Browse,
     Edit(Field, String),
     ConfirmDelete,
+    /// Wrapped conversation text and the first visible line.
+    Preview(Vec<String>, usize),
 }
 
 /// Where the title shown for a session comes from, in order of preference.
@@ -242,6 +244,20 @@ impl App {
         self.clamp();
     }
 
+    fn open_preview(&mut self, width: u16) {
+        let Some(i) = self.selected() else { return };
+        let Some(path) = transcript::find(&self.sessions[i].id) else {
+            self.status = "Transcript is gone, nothing to preview".into();
+            return;
+        };
+        // Leave room for the border and a column of padding.
+        match transcript::preview(&path, (width as usize).saturating_sub(4)) {
+            Ok(lines) if !lines.is_empty() => self.mode = Mode::Preview(lines, 0),
+            Ok(_) => self.status = "Nothing to preview yet".into(),
+            Err(e) => self.status = format!("{e:#}"),
+        }
+    }
+
     /// Initial text of the edit prompt for the selected session.
     fn prefill(&self, field: Field) -> Option<String> {
         let s = &self.sessions[self.selected()?];
@@ -353,6 +369,12 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+/// Moves a scroll offset by `delta`. The last page stays full instead of scrolling the final
+/// line to the top.
+fn scroll_by(cur: usize, delta: isize, len: usize, page: usize) -> usize {
+    (cur as isize + delta).clamp(0, len.saturating_sub(page) as isize) as usize
+}
+
 fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<Launch>> {
     loop {
         terminal.draw(|f| draw(f, app))?;
@@ -364,8 +386,12 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<La
                     MouseEventKind::ScrollDown => WHEEL_STEP,
                     _ => 0,
                 };
-                if matches!(app.mode, Mode::Browse) {
-                    app.move_by(delta);
+                match &mut app.mode {
+                    Mode::Browse => app.move_by(delta),
+                    Mode::Preview(lines, scroll) => {
+                        *scroll = scroll_by(*scroll, delta, lines.len(), app.page)
+                    }
+                    _ => {}
                 }
                 continue;
             }
@@ -378,6 +404,21 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<La
         app.status.clear();
 
         match &mut app.mode {
+            Mode::Preview(lines, scroll) => {
+                let (len, page) = (lines.len(), app.page);
+                let by = |cur: usize, delta: isize| scroll_by(cur, delta, len, page);
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => app.mode = Mode::Browse,
+                    KeyCode::Char('v') if ctrl => app.mode = Mode::Browse,
+                    KeyCode::Up => *scroll = by(*scroll, -1),
+                    KeyCode::Down => *scroll = by(*scroll, 1),
+                    KeyCode::PageUp => *scroll = by(*scroll, -(page as isize)),
+                    KeyCode::PageDown => *scroll = by(*scroll, page as isize),
+                    KeyCode::Home => *scroll = 0,
+                    KeyCode::End => *scroll = len.saturating_sub(page),
+                    _ => {}
+                }
+            }
             Mode::Edit(field, buf) => match key.code {
                 KeyCode::Esc => app.mode = Mode::Browse,
                 KeyCode::Enter => {
@@ -443,6 +484,7 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<La
                     app.clamp();
                 }
                 KeyCode::Char('b') if ctrl => app.toggle_branch_filter(),
+                KeyCode::Char('v') if ctrl => app.open_preview(terminal.size()?.width),
                 KeyCode::Char(c @ ('r' | 't' | 'e' | 'o')) if ctrl => {
                     let field = match c {
                         'r' => Field::Title,
@@ -615,12 +657,52 @@ fn draw(f: &mut Frame, app: &mut App) {
     let help_line = match &app.mode {
         Mode::Edit(field, buf) => Line::from(format!("{}: {buf}█   (Enter to confirm, Esc to cancel)", field.label())),
         Mode::ConfirmDelete => Line::from("Really delete this session? (y = yes, anything else cancels)".red()),
+        Mode::Preview(..) => Line::from("".dim()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^O flags  Tab empty  ^L dir  ^B branch  ^R title  ^T tags  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^V preview  ^O flags  Tab empty  ^L dir  ^B branch  ^R title  ^T tags  ^E note  ^X delete  Esc quit".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);
+
+    // The preview covers everything, so it is drawn last. It pages by its own height.
+    let preview_page = f.area().height.saturating_sub(2).max(1) as usize;
+    let mut previewing = false;
+    if let Mode::Preview(lines, scroll) = &app.mode {
+        previewing = true;
+        let area = f.area();
+        let end = (*scroll + preview_page).min(lines.len());
+        let text: Vec<Line> = lines[*scroll..end]
+            .iter()
+            .map(|l| match l.as_str() {
+                "── you ──" => Line::from(l.as_str()).yellow().bold(),
+                "── claude ──" => Line::from(l.as_str()).green().bold(),
+                _ => Line::from(l.as_str()),
+            })
+            .collect();
+        f.render_widget(Clear, area);
+        f.render_widget(
+            Paragraph::new(text).block(Block::default().borders(Borders::ALL).title(format!(
+                " Preview · {}/{} · ↑↓ PgUp PgDn Home End scroll · Esc closes ",
+                (*scroll + 1).min(lines.len()),
+                lines.len()
+            ))),
+            area,
+        );
+        if lines.len() > preview_page {
+            let mut bar = ScrollbarState::new(lines.len())
+                .viewport_content_length(preview_page)
+                .position(*scroll);
+            f.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight),
+                area,
+                &mut bar,
+            );
+        }
+    }
+    if previewing {
+        app.page = preview_page;
+    }
 }
 
 /// `#558` for a GitHub-style pull request URL, otherwise the URL itself.
@@ -701,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn human_size_and_pr_label() {
+    fn human_size_and_pr_label_and_scroll_by() {
         assert_eq!(human_size(12), "12 B");
         assert_eq!(human_size(1536), "1.5 KB");
         assert_eq!(human_size(5 * 1024 * 1024), "5.0 MB");
@@ -710,6 +792,10 @@ mod tests {
             pr_label("https://example.test/merge/abc"),
             "https://example.test/merge/abc"
         );
+        assert_eq!(scroll_by(5, 100, 20, 8), 12);
+        assert_eq!(scroll_by(5, -100, 20, 8), 0);
+        assert_eq!(scroll_by(0, 3, 0, 8), 0);
+        assert_eq!(scroll_by(0, 3, 5, 8), 0);
     }
 
     #[test]

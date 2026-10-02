@@ -228,6 +228,96 @@ pub fn refresh_meta(sessions: &mut [Session]) {
     }
 }
 
+/// Text of an assistant record's visible text blocks.
+fn assistant_text(v: &Value) -> Option<String> {
+    if v["type"] != "assistant" {
+        return None;
+    }
+    let text = v["message"]["content"]
+        .as_array()?
+        .iter()
+        .filter(|b| b["type"] == "text")
+        .filter_map(|b| b["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+/// Only the most recent messages are kept, so a huge session doesn't fill memory.
+const PREVIEW_MESSAGES: usize = 200;
+/// Longer messages are cut; a preview is for recognising a session, not for reading it.
+const PREVIEW_MESSAGE_CHARS: usize = 1500;
+
+/// Human-readable conversation for a preview pane, wrapped to `width` columns.
+pub fn preview(path: &Path, width: usize) -> Result<Vec<String>> {
+    let mut messages: std::collections::VecDeque<(&'static str, String)> = Default::default();
+    for line in BufReader::new(File::open(path)?).lines() {
+        let Ok(line) = line else { continue };
+        if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if v["isSidechain"].as_bool() == Some(true) {
+            continue;
+        }
+        let entry = prompt_text(&v)
+            .map(|t| ("you", t))
+            .or_else(|| assistant_text(&v).map(|t| ("claude", t)));
+        if let Some((who, text)) = entry {
+            if messages.len() == PREVIEW_MESSAGES {
+                messages.pop_front();
+            }
+            messages.push_back((who, text.chars().take(PREVIEW_MESSAGE_CHARS).collect()));
+        }
+    }
+    let mut out = Vec::new();
+    for (who, text) in messages {
+        out.push(format!("── {who} ──"));
+        out.extend(wrap(&text, width));
+        out.push(String::new());
+    }
+    Ok(out)
+}
+
+/// Greedy word wrap on character count; words longer than `width` are split.
+pub fn wrap(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut out = Vec::new();
+    for para in text.lines() {
+        if para.trim().is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let (mut cur, mut len) = (String::new(), 0);
+        for word in para.split_whitespace() {
+            let wl = word.chars().count();
+            if len > 0 && len + 1 + wl > width {
+                out.push(std::mem::take(&mut cur));
+                len = 0;
+            }
+            if len > 0 {
+                cur.push(' ');
+                len += 1;
+            }
+            for ch in word.chars() {
+                if len == width {
+                    out.push(std::mem::take(&mut cur));
+                    len = 0;
+                }
+                cur.push(ch);
+                len += 1;
+            }
+        }
+        if !cur.is_empty() {
+            out.push(cur);
+        }
+    }
+    out
+}
+
 #[derive(Default)]
 pub struct ImportStats {
     pub added: usize,
@@ -356,6 +446,41 @@ mod tests {
         let p = write_transcript("bare", &[r#"{"type":"mode"}"#]);
         assert_eq!(scan_meta(&p).unwrap(), Meta::default());
         let _ = fs::remove_file(p);
+    }
+
+    #[test]
+    fn preview_shows_both_sides_and_skips_noise() {
+        let p = write_transcript(
+            "preview",
+            &[
+                r#"{"type":"user","message":{"content":"<command-name>/model</command-name>"}}"#,
+                r#"{"type":"user","message":{"content":"What is Rust?"}}"#,
+                r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"A language."}]}}"#,
+                r#"{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"subagent chatter"}]}}"#,
+                r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}"#,
+            ],
+        );
+        let lines = preview(&p, 40).unwrap();
+        assert_eq!(
+            lines,
+            [
+                "── you ──",
+                "What is Rust?",
+                "",
+                "── claude ──",
+                "A language.",
+                ""
+            ]
+        );
+        let _ = fs::remove_file(p);
+    }
+
+    #[test]
+    fn wrap_breaks_on_words_and_splits_overlong_ones() {
+        assert_eq!(wrap("aaa bbb ccc", 7), ["aaa bbb", "ccc"]);
+        assert_eq!(wrap("abcdefghij", 4), ["abcd", "efgh", "ij"]);
+        assert_eq!(wrap("one\n\ntwo", 10), ["one", "", "two"]);
+        assert!(wrap("", 10).is_empty());
     }
 
     #[test]
