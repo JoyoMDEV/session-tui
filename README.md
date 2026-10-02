@@ -5,7 +5,8 @@ A terminal UI to find and resume your [Claude Code](https://claude.com/claude-co
 Claude Code prints a `claude --resume <session_id>` hint when a session ends, but nothing helps you find it again a week later. `sessions` registers every session, lets the agent give it a short title, and shows them in a searchable list. Pick one and it resumes in the right directory.
 
 - Fuzzy search over titles, directories, tags and notes
-- Title suggestions from the first prompt, so old sessions are usable without naming them first
+- Shows the title, git branch and pull request Claude Code recorded itself, so old sessions are usable without naming them first
+- Conversation preview before you resume
 - Tags and notes, e.g. a ticket key
 - Import of sessions that existed before you installed the tool
 - Sessions whose transcript has been deleted are marked and can be pruned
@@ -67,15 +68,17 @@ Run `sessions` to open the browser.
 | `PgUp` `PgDn`, `Home` `End`, mouse wheel | Scroll by page, jump to start or end, scroll |
 | `Enter` | Resume the session in its original directory |
 | `^O` | Resume with extra `claude` flags |
+| `^V` | Preview the conversation (`Esc` closes) |
 | `Tab` | Show or hide empty sessions (no title and no prompt) |
 | `^L` | Only sessions in or around the current directory |
+| `^B` | Only sessions on the git branch checked out in the current directory |
 | `^R` `^T` `^E` | Edit title, tags, note |
 | `^X` | Delete the entry (asks first) |
 | `Esc` | Quit |
 
 The TUI captures the mouse for scrolling, so select text with Shift held (Option in some terminals). On terminals under 22 rows the details pane is hidden to make room for the list.
 
-Sessions without a title show a suggestion from their first prompt, marked with `~`. `^R` starts from that suggestion.
+Each row shows the best title available: yours (plain), else the one Claude Code generated (italic), else a snippet of the first prompt (dimmed, marked with `~`). `^R` starts from whichever is shown.
 
 ### Commands
 
@@ -108,6 +111,24 @@ On every `SessionStart` Claude Code runs `sessions hook` with a JSON payload on 
 `sessions.json` is a plain JSON array. Writes are locked and atomic, and a file that doesn't parse is moved aside as `sessions.json.corrupt-<timestamp>` rather than overwritten.
 
 The sort order uses the transcript's modification time, which changes on every message, so a long-running session stays near the top.
+
+Claude Code's generated title, git branch and linked pull request are read from the transcript, whose format is internal to Claude Code and may change between versions. If a field disappears, `sessions` shows less rather than failing. The values are copied into `sessions.json`, so an entry stays recognisable after the transcript is gone.
+
+When you resume a session that has a title from `sessions`, the hook also passes it to Claude Code as `sessionTitle`, so `claude --resume` shows it too. Claude Code only honours this at session start, and the hook leaves a name alone if the session already has one (for example from `/rename`). A title set mid-session therefore reaches Claude Code's own picker the next time you resume.
+
+### Transcript retention
+
+Claude Code deletes old transcripts (30 days by default, see `cleanupPeriodDays` in its settings). `sessions` keeps the entry, but a session without a transcript can't be resumed: it is marked `✗`, and `sessions prune` removes such entries. Raise `cleanupPeriodDays` if you want to find sessions for longer.
+
+## Compared with `claude --resume`
+
+Claude Code has its own picker. As documented at the time of writing, it covers search, preview, rename, git branch, worktrees and PR lookup. `sessions` overlaps with it on purpose and adds:
+
+- tags and notes (the built-in picker has none),
+- a view across all projects by default, resuming straight in the session's own directory,
+- extra `claude` flags per resume, such as `--fork-session`.
+
+The built-in picker has things `sessions` doesn't: worktree grouping, grouped forks and PR URL search.
 
 ## Development
 
