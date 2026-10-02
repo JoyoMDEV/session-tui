@@ -4,6 +4,8 @@
 #   scripts/formula.sh v0.1.0 > Formula/sessions.rb
 #
 # SESSIONS_RELEASE_BASE overrides the release URL prefix, like in install.sh.
+# CHECKSUM_DIR reads the .sha256 files from a local directory instead of downloading them, which
+# is how the release pipeline runs it (it works while the repository is still private).
 set -eu
 
 REPO="JoyoMDEV/session-tui"
@@ -13,7 +15,12 @@ version="${tag#v}"
 
 # Fetch every checksum before printing anything, so a missing asset can't leave half a formula.
 sha() {
-    sum="$(curl -fsSL "$BASE/download/$tag/sessions-$tag-$1.tar.gz.sha256" | awk '{print $1; exit}')"
+    file="sessions-$tag-$1.tar.gz.sha256"
+    if [ -n "${CHECKSUM_DIR:-}" ]; then
+        sum="$(awk '{print $1; exit}' "$CHECKSUM_DIR/$file")"
+    else
+        sum="$(curl -fsSL "$BASE/download/$tag/$file" | awk '{print $1; exit}')"
+    fi
     [ -n "$sum" ] || {
         echo "error: no checksum for $1 in $tag" >&2
         exit 1
