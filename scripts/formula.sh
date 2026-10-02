@@ -11,7 +11,6 @@ set -eu
 REPO="JoyoMDEV/session-tui"
 BASE="${SESSIONS_RELEASE_BASE:-https://github.com/$REPO/releases}"
 tag="${1:?usage: formula.sh vX.Y.Z}"
-version="${tag#v}"
 
 # Fetch every checksum before printing anything, so a missing asset can't leave half a formula.
 sha() {
@@ -48,7 +47,6 @@ cat <<EOF
 class Sessions < Formula
   desc "Terminal UI to browse and resume saved Claude Code sessions"
   homepage "https://github.com/$REPO"
-  version "$version"
   license any_of: ["MIT", "Apache-2.0"]
 
   on_macos do
