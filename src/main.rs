@@ -1,5 +1,6 @@
 mod store;
 mod transcript;
+mod tui;
 
 use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
@@ -59,6 +60,7 @@ struct HookInput {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
+        None => tui::run(),
         Some(Cmd::Hook) => hook(),
         Some(Cmd::Title { id, title }) => {
             let title = non_empty(title)?;
@@ -101,7 +103,7 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        None | Some(Cmd::List) => {
+        Some(Cmd::List) => {
             for s in store::load()? {
                 let tags = if s.tags.is_empty() {
                     String::new()
