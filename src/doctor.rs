@@ -1,13 +1,13 @@
 //! `sessions doctor`: checks that everything the tool relies on is in place.
 
-use crate::{setup, store, transcript};
+use crate::setup::{self, canonical, find_in_path};
+use crate::{store, transcript};
 use anyhow::Result;
 use serde_json::Value;
 use std::{
     collections::HashSet,
     ffi::OsStr,
     fs,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
 
@@ -79,39 +79,9 @@ fn load_settings(path: &Path) -> Settings {
     }
 }
 
-/// The program a hook command runs, with a leading `~` or `$HOME` expanded.
-pub fn hook_executable(command: &str, home: &Path) -> Option<PathBuf> {
-    let command = command.trim();
-    let first = match command.strip_prefix('"') {
-        Some(rest) => rest.split('"').next()?,
-        None => command.split_whitespace().next()?,
-    };
-    let expand = |prefix: &str| first.strip_prefix(prefix).map(|rest| home.join(rest));
-    Some(
-        expand("~/")
-            .or_else(|| expand("$HOME/"))
-            .or_else(|| expand("${HOME}/"))
-            .unwrap_or_else(|| PathBuf::from(first)),
-    )
-}
-
-fn is_executable_file(path: &Path) -> bool {
-    fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-}
-
-fn canonical(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
-}
-
 fn dir_on_path(dir: &Path, path_var: &OsStr) -> bool {
     let want = canonical(dir);
     std::env::split_paths(path_var).any(|d| canonical(&d) == want)
-}
-
-fn find_in_path(name: &str, path_var: &OsStr) -> Option<PathBuf> {
-    std::env::split_paths(path_var)
-        .map(|dir| dir.join(name))
-        .find(|p| is_executable_file(p))
 }
 
 /// Days Claude Code keeps transcripts, and whether that is just its default.
@@ -190,23 +160,17 @@ fn hook_check(
     };
 
     if let Some(command) = setup::hook_commands(value).first() {
-        let Some(mut program) = hook_executable(command, home) else {
+        let Some(declared) = setup::hook_executable(command, home) else {
             return fail("hook", format!("cannot read the hook command: {command}"))
                 .hint(setup_hint);
         };
-        if program.components().count() == 1 {
-            // A bare name is looked up on PATH like the shell would.
-            if let Some(found) = find_in_path(&program.to_string_lossy(), path_var) {
-                program = found;
-            }
-        }
-        if !is_executable_file(&program) {
+        let Some(program) = setup::resolve_program(command, home, path_var) else {
             return fail(
                 "hook",
-                format!("the hook runs {}, which does not exist", program.display()),
+                format!("the hook runs {}, which does not exist", declared.display()),
             )
-            .hint("remove that entry from settings.json, then run `sessions setup`");
-        }
+            .hint("run `sessions setup`; it points the hook at this binary");
+        };
         if canonical(&program) != canonical(current_exe) {
             return warn(
                 "hook",
@@ -216,7 +180,7 @@ fn hook_check(
                     current_exe.display()
                 ),
             )
-            .hint("two installs can differ in version; keep one, or point the hook at the one you use");
+            .hint("two installs can differ in version; keep one, or run `sessions setup --force` to point the hook at this one");
         }
         return ok("hook", format!("registered in {shown}"));
     }
@@ -476,6 +440,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
 
     fn tmpdir(name: &str) -> PathBuf {
         let dir =
@@ -502,34 +467,6 @@ mod tests {
     }
 
     const HOME: &str = "/home/u";
-
-    #[test]
-    fn hook_executable_reads_quoted_bare_and_home_relative_commands() {
-        let home = Path::new(HOME);
-        let exe = |c: &str| hook_executable(c, home);
-        assert_eq!(
-            exe("/a/b/sessions hook"),
-            Some(PathBuf::from("/a/b/sessions"))
-        );
-        assert_eq!(
-            exe("\"/My Apps/sessions\" hook"),
-            Some(PathBuf::from("/My Apps/sessions"))
-        );
-        assert_eq!(
-            exe("$HOME/.cargo/bin/sessions hook"),
-            Some(PathBuf::from("/home/u/.cargo/bin/sessions"))
-        );
-        assert_eq!(
-            exe("${HOME}/bin/sessions hook"),
-            Some(PathBuf::from("/home/u/bin/sessions"))
-        );
-        assert_eq!(
-            exe("~/bin/sessions hook"),
-            Some(PathBuf::from("/home/u/bin/sessions"))
-        );
-        assert_eq!(exe("sessions hook"), Some(PathBuf::from("sessions")));
-        assert_eq!(exe("   "), None);
-    }
 
     #[test]
     fn dir_on_path_matches_through_symlinks_and_ignores_others() {
