@@ -104,13 +104,15 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some(Cmd::List) => {
+            let mut out = std::io::stdout().lock();
             for s in store::load()? {
                 let tags = if s.tags.is_empty() {
                     String::new()
                 } else {
                     format!("  #{}", s.tags.join(" #"))
                 };
-                println!(
+                let written = writeln!(
+                    out,
                     "{}  {}  {}  {}{}",
                     s.id,
                     s.updated_at.format("%Y-%m-%d %H:%M"),
@@ -121,6 +123,10 @@ fn main() -> Result<()> {
                     s.cwd,
                     tags
                 );
+                // `println!` panics on a closed pipe, e.g. `sessions list | head`.
+                if written.is_err() {
+                    break;
+                }
             }
             Ok(())
         }
