@@ -1,0 +1,14 @@
+{
+  "name": "session-tui",
+  "owner": {
+    "name": "Johannes Moseler"
+  },
+  "description": "Marketplace for the sessions plugin, which registers Claude Code sessions for the `sessions` TUI.",
+  "plugins": [
+    {
+      "name": "sessions",
+      "source": ".",
+      "description": "SessionStart hook for the `sessions` TUI (requires the `sessions` binary)."
+    }
+  ]
+}

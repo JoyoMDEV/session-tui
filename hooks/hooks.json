@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PATH=\"$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; command -v sessions >/dev/null 2>&1 && exec sessions hook; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
