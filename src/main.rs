@@ -1,7 +1,8 @@
 mod store;
+mod transcript;
 
 use anyhow::{Context, Result, bail};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::io::{Read, Write};
@@ -35,6 +36,13 @@ enum Cmd {
         #[arg(long)]
         id: Option<String>,
         text: String,
+    },
+    /// Register existing Claude Code transcripts that aren't known yet
+    Import,
+    /// Remove sessions whose transcript no longer exists (dry run unless --yes)
+    Prune {
+        #[arg(long)]
+        yes: bool,
     },
     /// Remove a session
     Rm { id: String },
@@ -74,6 +82,15 @@ fn main() -> Result<()> {
             let text = text.trim().to_string();
             modify(id, |s| s.note = Some(text).filter(|t| !t.is_empty()))
         }
+        Some(Cmd::Import) => {
+            let st = transcript::import()?;
+            println!(
+                "{} added, {} suggestions filled, {} empty transcripts skipped",
+                st.added, st.updated, st.skipped_empty
+            );
+            Ok(())
+        }
+        Some(Cmd::Prune { yes }) => prune(yes),
         Some(Cmd::Rm { id }) => {
             if !store::update(|s| {
                 let n = s.len();
@@ -123,6 +140,9 @@ fn hook() -> Result<()> {
 
     store::update(|sessions| {
         store::upsert(sessions, &h.session_id, &h.cwd);
+        if let Some(s) = sessions.iter_mut().find(|s| s.id == h.session_id) {
+            transcript::fill_suggestion(s);
+        }
     })?;
 
     // The agent's shell may not have our install dir on PATH, so use the absolute path.
@@ -173,4 +193,30 @@ fn modify(id: Option<String>, f: impl FnOnce(&mut store::Session)) -> Result<()>
             f(s);
         }
     })
+}
+
+fn prune(yes: bool) -> Result<()> {
+    let existing = transcript::existing_ids();
+    // A session that just started has no transcript until the first message is sent.
+    let grace = Utc::now() - Duration::hours(1);
+    let orphan = |s: &store::Session| !existing.contains(&s.id) && s.updated_at < grace;
+
+    if !yes {
+        let orphans: Vec<_> = store::load()?.into_iter().filter(|s| orphan(s)).collect();
+        for s in &orphans {
+            println!("{}  {}  {}", s.id, s.title.as_deref().unwrap_or("-"), s.cwd);
+        }
+        println!(
+            "{} orphaned session(s); run `sessions prune --yes` to remove",
+            orphans.len()
+        );
+        return Ok(());
+    }
+    let removed = store::update(|all| {
+        let n = all.len();
+        all.retain(|s| !orphan(s));
+        n - all.len()
+    })?;
+    println!("removed {removed} orphaned session(s)");
+    Ok(())
 }
