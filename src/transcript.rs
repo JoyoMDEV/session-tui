@@ -51,6 +51,13 @@ pub fn existing_ids() -> HashSet<String> {
         .collect()
 }
 
+/// A session whose transcript is gone, so it can't be resumed. Entries touched in the last hour
+/// are spared, because a fresh session has no transcript until its first message.
+pub fn is_orphan(s: &Session, existing: &HashSet<String>) -> bool {
+    let grace = Utc::now() - chrono::Duration::hours(1);
+    !existing.contains(&s.id) && s.updated_at < grace
+}
+
 pub fn find(id: &str) -> Option<PathBuf> {
     project_dirs()
         .into_iter()
@@ -481,6 +488,24 @@ mod tests {
         assert_eq!(wrap("abcdefghij", 4), ["abcd", "efgh", "ij"]);
         assert_eq!(wrap("one\n\ntwo", 10), ["one", "", "two"]);
         assert!(wrap("", 10).is_empty());
+    }
+
+    #[test]
+    fn is_orphan_needs_a_missing_transcript_and_some_age() {
+        let old = Utc::now() - chrono::Duration::hours(3);
+        let fresh = Utc::now();
+        let existing: HashSet<String> = ["known".to_string()].into();
+        let session = |id: &str, at| store::new_session(id, "/x", at, at);
+
+        assert!(is_orphan(&session("gone", old), &existing));
+        assert!(
+            !is_orphan(&session("known", old), &existing),
+            "transcript exists"
+        );
+        assert!(
+            !is_orphan(&session("gone", fresh), &existing),
+            "just started, no transcript yet"
+        );
     }
 
     #[test]

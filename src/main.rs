@@ -4,7 +4,7 @@ mod transcript;
 mod tui;
 
 use anyhow::{Context, Result, bail};
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::io::{Read, Write};
@@ -225,9 +225,7 @@ fn modify(id: Option<String>, f: impl FnOnce(&mut store::Session)) -> Result<()>
 
 fn prune(yes: bool) -> Result<()> {
     let existing = transcript::existing_ids();
-    // A session that just started has no transcript until the first message is sent.
-    let grace = Utc::now() - Duration::hours(1);
-    let orphan = |s: &store::Session| !existing.contains(&s.id) && s.updated_at < grace;
+    let orphan = |s: &store::Session| transcript::is_orphan(s, &existing);
 
     if !yes {
         let orphans: Vec<_> = store::load()?.into_iter().filter(|s| orphan(s)).collect();

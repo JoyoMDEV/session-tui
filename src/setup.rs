@@ -33,21 +33,26 @@ pub fn hook_command(exe: &Path) -> String {
     }
 }
 
-/// Whether a SessionStart entry already runs `sessions hook`, however it was installed.
-fn has_hook(settings: &Value) -> bool {
+/// The SessionStart commands that run `sessions hook`, however they were installed.
+pub fn hook_commands(settings: &Value) -> Vec<String> {
     settings["hooks"]["SessionStart"]
         .as_array()
         .into_iter()
         .flatten()
         .flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
         .filter_map(|hook| hook["command"].as_str())
-        .any(|cmd| {
-            let cmd = cmd.trim();
-            cmd.ends_with(" hook") && cmd.contains("sessions")
-        })
+        .map(str::trim)
+        .filter(|cmd| cmd.ends_with(" hook") && cmd.contains("sessions"))
+        .map(str::to_string)
+        .collect()
 }
 
-fn plugin_enabled(settings: &Value) -> bool {
+fn has_hook(settings: &Value) -> bool {
+    !hook_commands(settings).is_empty()
+}
+
+/// Whether the sessions plugin is enabled, which ships the same hook.
+pub fn plugin_enabled(settings: &Value) -> bool {
     settings["enabledPlugins"]
         .as_object()
         .is_some_and(|plugins| {
