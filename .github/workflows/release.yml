@@ -76,3 +76,12 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  # Needs the release to exist, because the formula points at its assets.
+  homebrew:
+    needs: release
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
