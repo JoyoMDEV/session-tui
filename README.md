@@ -64,6 +64,7 @@ Run `sessions` to open the browser.
 | --- | --- |
 | type | Fuzzy filter |
 | `↑` `↓`, `^P` `^N` | Move |
+| `PgUp` `PgDn`, `Home` `End`, mouse wheel | Scroll by page, jump to start or end, scroll |
 | `Enter` | Resume the session in its original directory |
 | `^O` | Resume with extra `claude` flags |
 | `Tab` | Show or hide empty sessions (no title and no prompt) |
@@ -71,6 +72,8 @@ Run `sessions` to open the browser.
 | `^R` `^T` `^E` | Edit title, tags, note |
 | `^X` | Delete the entry (asks first) |
 | `Esc` | Quit |
+
+The TUI captures the mouse for scrolling, so select text with Shift held (Option in some terminals). On terminals under 22 rows the details pane is hidden to make room for the list.
 
 Sessions without a title show a suggestion from their first prompt, marked with `~`. `^R` starts from that suggestion.
 

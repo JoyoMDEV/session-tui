@@ -4,11 +4,17 @@ use anyhow::Result;
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use ratatui::{
     DefaultTerminal, Frame,
-    crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    crossterm::event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        MouseEventKind,
+    },
     layout::{Constraint, Layout},
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{
+        Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState,
+    },
 };
 use std::collections::HashSet;
 use std::os::unix::process::CommandExt;
@@ -50,8 +56,15 @@ struct App {
     only_here: bool,
     mode: Mode,
     list: ListState,
+    /// Rows the list shows at once; set while drawing, used for PageUp/PageDown.
+    page: usize,
     status: String,
 }
+
+/// Below this terminal height the details pane is dropped to leave room for the list.
+const MIN_HEIGHT_FOR_DETAILS: u16 = 22;
+/// Rows scrolled per mouse wheel notch.
+const WHEEL_STEP: isize = 3;
 
 /// What to run after the TUI has closed.
 struct Launch {
@@ -144,6 +157,21 @@ impl App {
         }
     }
 
+    /// Moves the cursor without wrapping around, for paging and the mouse wheel.
+    fn move_by(&mut self, delta: isize) {
+        let n = self.visible().len();
+        if n > 0 {
+            let cur = self.list.selected().unwrap_or(0) as isize;
+            self.list
+                .select(Some((cur + delta).clamp(0, n as isize - 1) as usize));
+        }
+    }
+
+    fn jump_to_end(&mut self) {
+        let n = self.visible().len();
+        self.list.select(n.checked_sub(1));
+    }
+
     /// Initial text of the edit prompt for the selected session.
     fn prefill(&self, field: Field) -> Option<String> {
         let s = &self.sessions[self.selected()?];
@@ -228,6 +256,7 @@ pub fn run() -> Result<()> {
         only_here: false,
         mode: Mode::Browse,
         list: ListState::default(),
+        page: 10,
         status: String::new(),
     };
     app.sessions = store::load()?;
@@ -235,7 +264,11 @@ pub fn run() -> Result<()> {
     app.clamp();
 
     let mut terminal = ratatui::init();
+    // Without mouse capture the wheel only scrolls if the terminal maps it to arrow keys.
+    // Capturing it makes plain text selection need Shift (Option in some terminals).
+    let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture);
     let result = event_loop(&mut terminal, &mut app);
+    let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
 
     if let Some(Launch { session, args }) = result? {
@@ -254,8 +287,17 @@ pub fn run() -> Result<()> {
 fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<Launch>> {
     loop {
         terminal.draw(|f| draw(f, app))?;
-        let Event::Key(key) = event::read()? else {
-            continue;
+        let key = match event::read()? {
+            Event::Key(key) => key,
+            Event::Mouse(m) if matches!(app.mode, Mode::Browse) => {
+                match m.kind {
+                    MouseEventKind::ScrollUp => app.move_by(-WHEEL_STEP),
+                    MouseEventKind::ScrollDown => app.move_by(WHEEL_STEP),
+                    _ => {}
+                }
+                continue;
+            }
+            _ => continue,
         };
         if key.kind != KeyEventKind::Press {
             continue;
@@ -314,6 +356,10 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<La
                 }
                 KeyCode::Up => app.mv(-1),
                 KeyCode::Down => app.mv(1),
+                KeyCode::PageUp => app.move_by(-(app.page as isize)),
+                KeyCode::PageDown => app.move_by(app.page as isize),
+                KeyCode::Home => app.list.select(Some(0)),
+                KeyCode::End => app.jump_to_end(),
                 KeyCode::Char('p') if ctrl => app.mv(-1),
                 KeyCode::Char('n') if ctrl => app.mv(1),
                 KeyCode::Tab => {
@@ -356,13 +402,20 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<La
 }
 
 fn draw(f: &mut Frame, app: &mut App) {
+    let detail_height = if f.area().height >= MIN_HEIGHT_FOR_DETAILS {
+        6
+    } else {
+        0
+    };
     let [search, body, detail, help] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(3),
-        Constraint::Length(6),
+        Constraint::Length(detail_height),
         Constraint::Length(1),
     ])
     .areas(f.area());
+    // Inner height of the bordered list.
+    app.page = body.height.saturating_sub(2).max(1) as usize;
 
     let hidden = app
         .sessions
@@ -423,6 +476,16 @@ fn draw(f: &mut Frame, app: &mut App) {
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .highlight_symbol("▶ ");
     f.render_stateful_widget(list, body, &mut app.list);
+    if visible.len() > app.page {
+        let mut scrollbar = ScrollbarState::new(visible.len())
+            .viewport_content_length(app.page)
+            .position(app.list.selected().unwrap_or(0));
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            body,
+            &mut scrollbar,
+        );
+    }
 
     let detail_text = match app.selected().map(|i| &app.sessions[i]) {
         Some(s) => format!(
@@ -438,18 +501,20 @@ fn draw(f: &mut Frame, app: &mut App) {
         ),
         None => "No session selected".to_string(),
     };
-    f.render_widget(
-        Paragraph::new(detail_text)
-            .block(Block::default().borders(Borders::ALL).title(" Details ")),
-        detail,
-    );
+    if detail_height > 0 {
+        f.render_widget(
+            Paragraph::new(detail_text)
+                .block(Block::default().borders(Borders::ALL).title(" Details ")),
+            detail,
+        );
+    }
 
     let help_line = match &app.mode {
         Mode::Edit(field, buf) => Line::from(format!("{}: {buf}█   (Enter to confirm, Esc to cancel)", field.label())),
         Mode::ConfirmDelete => Line::from("Really delete this session? (y = yes, anything else cancels)".red()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^O flags  Tab empty  ^L dir  ^R title  ^T tags  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^O flags  Tab empty  ^L dir  ^R title  ^T tags  ^E note  ^X delete  PgUp/PgDn  Esc quit".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);
@@ -458,6 +523,52 @@ fn draw(f: &mut Frame, app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn app_with(n: usize) -> App {
+        let now = chrono::Utc::now();
+        let sessions = (0..n)
+            .map(|i| {
+                let mut s = store::new_session(&format!("id{i}"), "/x", now, now);
+                s.title = Some(format!("t{i}"));
+                s
+            })
+            .collect();
+        let mut app = App {
+            sessions,
+            resumable: HashSet::new(),
+            launch_dir: String::new(),
+            query: String::new(),
+            show_untitled: false,
+            only_here: false,
+            mode: Mode::Browse,
+            list: ListState::default(),
+            page: 10,
+            status: String::new(),
+        };
+        app.clamp();
+        app
+    }
+
+    #[test]
+    fn paging_clamps_at_both_ends_instead_of_wrapping() {
+        let mut app = app_with(25);
+        app.move_by(10);
+        assert_eq!(app.list.selected(), Some(10));
+        app.move_by(100);
+        assert_eq!(app.list.selected(), Some(24));
+        app.move_by(-100);
+        assert_eq!(app.list.selected(), Some(0));
+        app.jump_to_end();
+        assert_eq!(app.list.selected(), Some(24));
+    }
+
+    #[test]
+    fn paging_an_empty_list_keeps_nothing_selected() {
+        let mut app = app_with(0);
+        app.move_by(10);
+        app.jump_to_end();
+        assert_eq!(app.list.selected(), None);
+    }
 
     #[test]
     fn in_dir_matches_same_parent_and_child_but_not_siblings() {
