@@ -1,3 +1,4 @@
+mod setup;
 mod store;
 mod transcript;
 mod tui;
@@ -17,6 +18,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Add the SessionStart hook to Claude Code's settings.json (keeps a backup, safe to repeat)
+    Setup,
     /// SessionStart hook: reads hook JSON from stdin, registers the session, injects its id
     Hook,
     /// Set the title of a session (defaults to $CLAUDE_SESSION_ID)
@@ -66,6 +69,7 @@ struct HookInput {
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         None => tui::run(),
+        Some(Cmd::Setup) => setup::run(),
         Some(Cmd::Hook) => hook(),
         Some(Cmd::Title { id, title }) => {
             let title = non_empty(title)?;
