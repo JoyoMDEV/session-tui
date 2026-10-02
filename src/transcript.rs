@@ -5,7 +5,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -163,6 +163,71 @@ pub fn sync_activity(sessions: &mut [Session]) -> usize {
     changed
 }
 
+/// What Claude Code itself recorded about a session; the last value of each wins.
+#[derive(Debug, Default, PartialEq)]
+pub struct Meta {
+    pub native_title: Option<String>,
+    pub branch: Option<String>,
+    pub pr_url: Option<String>,
+}
+
+/// Value of `"key":"…"` for plain strings without escapes, found without parsing the line.
+/// Branch names are the only caller, and parsing every record just for them would be slow.
+fn quick_str<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    let rest = &line[line.find(key)? + key.len()..];
+    let value = &rest[..rest.find('"')?];
+    (!value.is_empty() && !value.contains('\\')).then_some(value)
+}
+
+/// Scans the whole transcript for the generated title, git branch and linked PR. The format is
+/// internal to Claude Code, so unknown or missing records just leave the fields empty.
+pub fn scan_meta(path: &Path) -> Result<Meta> {
+    let mut meta = Meta::default();
+    for line in BufReader::new(File::open(path)?).lines() {
+        let Ok(line) = line else { continue };
+        if line.contains("\"ai-title\"") || line.contains("\"pr-link\"") {
+            let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            match v["type"].as_str() {
+                Some("ai-title") => {
+                    meta.native_title = v["aiTitle"]
+                        .as_str()
+                        .map(str::to_string)
+                        .or(meta.native_title)
+                }
+                Some("pr-link") => {
+                    meta.pr_url = v["prUrl"].as_str().map(str::to_string).or(meta.pr_url)
+                }
+                _ => {}
+            }
+        } else if let Some(branch) = quick_str(&line, "\"gitBranch\":\"") {
+            // A detached HEAD is recorded as "HEAD", which is not a branch name.
+            if branch != "HEAD" {
+                meta.branch = Some(branch.to_string());
+            }
+        }
+    }
+    Ok(meta)
+}
+
+/// Copies title, branch and PR from the transcripts into the sessions. Values that are gone
+/// from the transcript (or whose transcript was deleted) are kept.
+pub fn refresh_meta(sessions: &mut [Session]) {
+    let paths: HashMap<String, PathBuf> = all()
+        .into_iter()
+        .filter_map(|p| Some((p.file_stem()?.to_string_lossy().into_owned(), p)))
+        .collect();
+    for s in sessions.iter_mut() {
+        let Some(meta) = paths.get(&s.id).and_then(|p| scan_meta(p).ok()) else {
+            continue;
+        };
+        s.native_title = meta.native_title.or(s.native_title.take());
+        s.branch = meta.branch.or(s.branch.take());
+        s.pr_url = meta.pr_url.or(s.pr_url.take());
+    }
+}
+
 #[derive(Default)]
 pub struct ImportStats {
     pub added: usize,
@@ -200,6 +265,7 @@ pub fn import() -> Result<ImportStats> {
             stats.added += 1;
         }
         sync_activity(sessions);
+        refresh_meta(sessions);
         stats
     })
 }
@@ -260,6 +326,36 @@ mod tests {
         assert!(!bump_to(&mut s, t1));
         assert_eq!(s.updated_at, t1);
         assert_eq!(s.created_at, t0);
+    }
+
+    #[test]
+    fn scan_meta_takes_the_last_title_branch_and_pr() {
+        let p = write_transcript(
+            "meta",
+            &[
+                r#"{"type":"user","gitBranch":"main","message":{"content":"hi"}}"#,
+                r#"{"type":"ai-title","aiTitle":"First title","sessionId":"x"}"#,
+                r#"{"type":"pr-link","prNumber":1,"prUrl":"https://example.test/pull/1"}"#,
+                r#"{"type":"user","gitBranch":"feat/x","message":{"content":"again"}}"#,
+                r#"{"type":"user","gitBranch":"HEAD","message":{"content":"detached"}}"#,
+                r#"{"type":"ai-title","aiTitle":"Better title","sessionId":"x"}"#,
+                r#"{"type":"pr-link","prNumber":2,"prUrl":"https://example.test/pull/2"}"#,
+                "garbage",
+                r#"{"type":"assistant","message":{"content":[{"type":"text","text":"\"gitBranch\":\"fake\""}]}}"#,
+            ],
+        );
+        let meta = scan_meta(&p).unwrap();
+        assert_eq!(meta.native_title.as_deref(), Some("Better title"));
+        assert_eq!(meta.branch.as_deref(), Some("feat/x"));
+        assert_eq!(meta.pr_url.as_deref(), Some("https://example.test/pull/2"));
+        let _ = fs::remove_file(p);
+    }
+
+    #[test]
+    fn scan_meta_on_a_bare_transcript_is_empty() {
+        let p = write_transcript("bare", &[r#"{"type":"mode"}"#]);
+        assert_eq!(scan_meta(&p).unwrap(), Meta::default());
+        let _ = fs::remove_file(p);
     }
 
     #[test]

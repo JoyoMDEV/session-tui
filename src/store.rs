@@ -15,6 +15,16 @@ pub struct Session {
     /// Title proposal derived from the first prompt; only used while there is no real title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+    /// Title Claude Code generated itself (`ai-title` in the transcript). Kept after the
+    /// transcript is deleted so the entry stays recognisable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_title: Option<String>,
+    /// Last git branch seen in the transcript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// URL of the last pull request linked to the session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<String>,
     pub cwd: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
@@ -106,6 +116,9 @@ pub fn new_session(
         id: id.to_string(),
         title: None,
         suggestion: None,
+        native_title: None,
+        branch: None,
+        pr_url: None,
         cwd: cwd.to_string(),
         tags: Vec::new(),
         note: None,
@@ -200,5 +213,8 @@ mod tests {
             "created_at":"2026-10-02T12:57:16Z","updated_at":"2026-10-02T12:57:16Z"}]"#;
         let all: Vec<Session> = serde_json::from_str(json).unwrap();
         assert!(all[0].tags.is_empty() && all[0].note.is_none() && all[0].suggestion.is_none());
+        assert!(
+            all[0].native_title.is_none() && all[0].branch.is_none() && all[0].pr_url.is_none()
+        );
     }
 }
