@@ -19,8 +19,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Add the SessionStart hook to Claude Code's settings.json (keeps a backup, safe to repeat)
-    Setup,
+    /// Add or repair the SessionStart hook in Claude Code's settings.json (keeps a backup)
+    Setup {
+        /// Point the hook at this binary even if another working one is registered
+        #[arg(long)]
+        force: bool,
+    },
     /// Check the install: binary, PATH, hook, sessions file, transcripts and retention
     Doctor,
     /// SessionStart hook: reads hook JSON from stdin, registers the session, injects its id
@@ -72,7 +76,7 @@ struct HookInput {
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         None => tui::run(),
-        Some(Cmd::Setup) => setup::run(),
+        Some(Cmd::Setup { force }) => setup::run(force),
         Some(Cmd::Doctor) => doctor::run(),
         Some(Cmd::Hook) => hook(),
         Some(Cmd::Title { id, title }) => {

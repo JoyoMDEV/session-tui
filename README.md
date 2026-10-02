@@ -52,7 +52,9 @@ The hook registers each session and tells the agent its session ID and how to se
 sessions setup
 ```
 
-It adds the hook to `~/.claude/settings.json`, keeps the old file as `settings.json.bak-<timestamp>`, and is safe to repeat. It leaves the file alone if the hook is already there, even if you wrote it by hand, or if the plugin below is enabled.
+It adds the hook to `~/.claude/settings.json` and keeps the old file as `settings.json.bak-<timestamp>`. It is safe to repeat: a hook that is already there, even one you wrote by hand, is left alone, and so is the file if the plugin below is enabled.
+
+If the hook points at a binary that no longer exists, for example after switching between Homebrew and `cargo install`, `setup` points it at the running binary instead. A hook that points at a different but working binary is also left alone; `sessions setup --force` switches it to this one.
 
 **As a plugin** (install the binary first):
 
@@ -109,7 +111,7 @@ The agent calls these, but you can too.
 
 | Command | What it does |
 | --- | --- |
-| `sessions setup` | Add the SessionStart hook to Claude Code's `settings.json` |
+| `sessions setup [--force]` | Add or repair the SessionStart hook in Claude Code's `settings.json` |
 | `sessions doctor` | Check the install and say how to fix what's wrong |
 | `sessions title [--id ID] <title>` | Set the title |
 | `sessions tag [--id ID] <tag>...` | Add tags |
