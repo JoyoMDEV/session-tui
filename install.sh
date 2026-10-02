@@ -145,5 +145,6 @@ if [ "$do_setup" -eq 0 ] || [ "$do_import" -eq 0 ]; then
     say "Next steps:"
     [ "$do_setup" -eq 1 ] || say "  sessions setup    add the hook to Claude Code (or install the plugin instead)"
     [ "$do_import" -eq 1 ] || say "  sessions import   register your existing sessions"
+    say "  sessions doctor   check that everything is in place"
     say "  sessions          open the browser"
 fi
