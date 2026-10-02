@@ -56,6 +56,11 @@ struct HookInput {
     session_id: String,
     #[serde(default)]
     cwd: String,
+    #[serde(default)]
+    source: String,
+    /// Present when the session already has a name, e.g. from `/rename` or `--name`.
+    #[serde(default)]
+    session_title: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -146,11 +151,11 @@ fn hook() -> Result<()> {
     std::io::stdin().read_to_string(&mut input)?;
     let h: HookInput = serde_json::from_str(&input).context("parsing hook input")?;
 
-    store::update(|sessions| {
+    let own_title = store::update(|sessions| {
         store::upsert(sessions, &h.session_id, &h.cwd);
-        if let Some(s) = sessions.iter_mut().find(|s| s.id == h.session_id) {
-            transcript::fill_suggestion(s);
-        }
+        let s = sessions.iter_mut().find(|s| s.id == h.session_id)?;
+        transcript::fill_suggestion(s);
+        s.title.clone()
     })?;
 
     // The agent's shell may not have our install dir on PATH, so use the absolute path.
@@ -167,6 +172,16 @@ fn hook() -> Result<()> {
         writeln!(f, "export PATH=\"{}:$PATH\"", exe_dir.display())?;
     }
 
+    println!("{}", hook_output(&h, own_title.as_deref(), &exe));
+    Ok(())
+}
+
+/// Claude Code ignores `sessionTitle` on `clear` and `compact`.
+fn title_applies(source: &str) -> bool {
+    matches!(source, "startup" | "resume" | "fork")
+}
+
+fn hook_output(h: &HookInput, own_title: Option<&str>, exe: &std::path::Path) -> serde_json::Value {
     let context = format!(
         "Session ID: {id} (also in $CLAUDE_SESSION_ID). Once the topic of this session is clear, \
          give it a short, descriptive title exactly once: {exe} title --id {id} \"<title>\". \
@@ -175,13 +190,14 @@ fn hook() -> Result<()> {
         id = h.session_id,
         exe = exe.display()
     );
-    println!(
-        "{}",
-        serde_json::json!({
-            "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": context }
-        })
-    );
-    Ok(())
+    let mut out =
+        serde_json::json!({ "hookEventName": "SessionStart", "additionalContext": context });
+    // Pass our title on as Claude Code's own session name so `claude --resume` shows it too,
+    // but never replace a name that is already set.
+    if let (true, None, Some(title)) = (title_applies(&h.source), &h.session_title, own_title) {
+        out["sessionTitle"] = serde_json::json!(title);
+    }
+    serde_json::json!({ "hookSpecificOutput": out })
 }
 
 /// Applies `f` to the session with the given id (default `$CLAUDE_SESSION_ID`), creating it if needed.
@@ -227,4 +243,69 @@ fn prune(yes: bool) -> Result<()> {
     })?;
     println!("removed {removed} orphaned session(s)");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(source: &str, session_title: Option<&str>) -> HookInput {
+        HookInput {
+            session_id: "abc".into(),
+            cwd: "/x".into(),
+            source: source.into(),
+            session_title: session_title.map(str::to_string),
+        }
+    }
+
+    fn title_of(out: &serde_json::Value) -> Option<&str> {
+        out["hookSpecificOutput"]["sessionTitle"].as_str()
+    }
+
+    #[test]
+    fn hook_hands_our_title_to_claude_on_resume() {
+        let out = hook_output(
+            &input("resume", None),
+            Some("My title"),
+            "/bin/sessions".as_ref(),
+        );
+        assert_eq!(title_of(&out), Some("My title"));
+        assert!(
+            out["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .unwrap()
+                .contains("abc")
+        );
+    }
+
+    #[test]
+    fn hook_never_replaces_an_existing_name() {
+        let out = hook_output(
+            &input("resume", Some("renamed")),
+            Some("Mine"),
+            "/bin/sessions".as_ref(),
+        );
+        assert_eq!(title_of(&out), None);
+    }
+
+    #[test]
+    fn hook_skips_title_on_sources_where_claude_ignores_it_or_without_a_title() {
+        let exe = std::path::Path::new("/bin/sessions");
+        assert_eq!(
+            title_of(&hook_output(&input("clear", None), Some("T"), exe)),
+            None
+        );
+        assert_eq!(
+            title_of(&hook_output(&input("compact", None), Some("T"), exe)),
+            None
+        );
+        assert_eq!(
+            title_of(&hook_output(&input("startup", None), None, exe)),
+            None
+        );
+        assert_eq!(
+            title_of(&hook_output(&input("", None), Some("T"), exe)),
+            None
+        );
+    }
 }
