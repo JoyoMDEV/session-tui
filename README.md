@@ -15,9 +15,17 @@ Unix only (macOS, Linux).
 
 ## Install
 
-Download the archive for your platform from the releases page, verify it against the `.sha256` file, and put `sessions` on your `PATH`.
+**Install script** (macOS and Linux). It downloads the latest release for your machine, checks it against the published SHA-256 file and installs it to `~/.local/bin`:
 
-Or build from source (Rust 1.88 or newer):
+```sh
+curl -fsSL https://raw.githubusercontent.com/JoyoMDEV/session-tui/main/install.sh | sh -s -- --setup --import
+```
+
+`--setup` also adds the Claude Code hook (see below) and `--import` registers your existing sessions. Without them the script prints the next steps. Use `--version v0.1.0` to pin a release and `INSTALL_DIR` to choose another directory. The script never edits your shell profile; if the directory isn't on your `PATH` it tells you which line to add. To read it before running it, download it first with `curl -fsSLO` and run `sh install.sh`.
+
+**Manually:** download the archive for your platform from the releases page, check it with the `.sha256` file, and put `sessions` on your `PATH`. A browser download of an unsigned binary is quarantined by macOS; clear that with `xattr -d com.apple.quarantine sessions`. Downloads through the install script (curl) aren't affected.
+
+**From source** (Rust 1.88 or newer):
 
 ```sh
 git clone https://github.com/JoyoMDEV/session-tui
@@ -31,6 +39,14 @@ Make sure `~/.cargo/bin` is on your `PATH`.
 
 The hook registers each session and tells the agent its session ID and how to set a title.
 
+**With the setup command** (simplest):
+
+```sh
+sessions setup
+```
+
+It adds the hook to `~/.claude/settings.json`, keeps the old file as `settings.json.bak-<timestamp>`, and is safe to repeat. It leaves the file alone if the hook is already there, even if you wrote it by hand, or if the plugin below is enabled.
+
 **As a plugin** (install the binary first):
 
 ```text
@@ -40,7 +56,7 @@ The hook registers each session and tells the agent its session ID and how to se
 
 To try it from a local checkout: `claude --plugin-dir /path/to/session-tui`.
 
-**Or by hand**, in `~/.claude/settings.json`:
+**By hand**, in `~/.claude/settings.json`:
 
 ```json
 {
@@ -55,7 +71,7 @@ To try it from a local checkout: `claude --plugin-dir /path/to/session-tui`.
 }
 ```
 
-Use one or the other, not both. New sessions are picked up from then on. To add your existing ones, run `sessions import`.
+Use only one of the three. New sessions are picked up from then on. To add your existing ones, run `sessions import`.
 
 ## Use
 
@@ -86,6 +102,7 @@ The agent calls these, but you can too.
 
 | Command | What it does |
 | --- | --- |
+| `sessions setup` | Add the SessionStart hook to Claude Code's `settings.json` |
 | `sessions title [--id ID] <title>` | Set the title |
 | `sessions tag [--id ID] <tag>...` | Add tags |
 | `sessions note [--id ID] <text>` | Set the note (empty text clears it) |
@@ -139,7 +156,7 @@ cargo test
 claude plugin validate --strict .
 ```
 
-Pushing a tag like `v0.1.0` builds release archives for macOS and Linux. The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
+`install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux. The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
 
 ## License
 
