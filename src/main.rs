@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::io::{Read, Write};
 
 #[derive(Parser)]
-#[command(about = "Browse and resume saved Claude Code sessions")]
+#[command(version, about = "Browse and resume saved Claude Code sessions")]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
