@@ -1,3 +1,4 @@
+mod doctor;
 mod setup;
 mod store;
 mod transcript;
@@ -20,6 +21,8 @@ struct Cli {
 enum Cmd {
     /// Add the SessionStart hook to Claude Code's settings.json (keeps a backup, safe to repeat)
     Setup,
+    /// Check the install: binary, PATH, hook, sessions file, transcripts and retention
+    Doctor,
     /// SessionStart hook: reads hook JSON from stdin, registers the session, injects its id
     Hook,
     /// Set the title of a session (defaults to $CLAUDE_SESSION_ID)
@@ -70,6 +73,7 @@ fn main() -> Result<()> {
     match Cli::parse().cmd {
         None => tui::run(),
         Some(Cmd::Setup) => setup::run(),
+        Some(Cmd::Doctor) => doctor::run(),
         Some(Cmd::Hook) => hook(),
         Some(Cmd::Title { id, title }) => {
             let title = non_empty(title)?;
