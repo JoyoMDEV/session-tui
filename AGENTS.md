@@ -13,7 +13,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 
 | Path | What it does |
 | --- | --- |
-| `src/main.rs` | CLI (clap), the hook, and the `title`, `tag`, `note`, `import`, `prune`, `rm`, `list` commands |
+| `src/main.rs`, `src/lib.rs` | `main.rs` calls `sessions::run()`; `lib.rs` has the CLI (clap), the hook, and the `title`, `tag`, `note`, `import`, `prune`, `rm`, `list` commands |
 | `src/store.rs` | `sessions.json`: data model, locking, atomic writes, recovery from a corrupt file |
 | `src/transcript.rs` | Read-only access to Claude Code transcripts: import, title/branch/PR scan, preview text |
 | `src/tui.rs` | The ratatui browser |
