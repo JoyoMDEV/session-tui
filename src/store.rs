@@ -28,10 +28,34 @@ pub struct Session {
     pub cwd: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Issue tracker keys such as `ABC-123`, kept apart from the topic tags.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tickets: Vec<String>,
+    /// Set once the user or agent has edited the tickets, so a key that was removed isn't
+    /// filled in from the branch name again.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tickets_touched: bool,
+    /// Which coding agent wrote the session. Sessions from before this field are Claude Code's.
+    #[serde(default = "default_agent", skip_serializing_if = "is_default_agent")]
+    pub agent: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+pub const DEFAULT_AGENT: &str = "claude-code";
+
+fn default_agent() -> String {
+    DEFAULT_AGENT.to_string()
+}
+
+fn is_default_agent(agent: &str) -> bool {
+    agent == DEFAULT_AGENT
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// Claude Code's config dir: `$CLAUDE_CONFIG_DIR`, otherwise `~/.claude`.
@@ -121,6 +145,9 @@ pub fn new_session(
         pr_url: None,
         cwd: cwd.to_string(),
         tags: Vec::new(),
+        tickets: Vec::new(),
+        tickets_touched: false,
+        agent: default_agent(),
         note: None,
         created_at,
         updated_at,
@@ -157,6 +184,7 @@ mod tests {
         upsert(&mut all, "a", "/x");
         all[0].title = Some("T".into());
         all[0].tags = vec!["jira".into()];
+        all[0].tickets = vec!["ABC-1".into()];
         all[0].note = Some("n".into());
         let created = all[0].created_at;
 
@@ -164,6 +192,7 @@ mod tests {
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].title.as_deref(), Some("T"));
         assert_eq!(all[0].tags, vec!["jira"]);
+        assert_eq!(all[0].tickets, vec!["ABC-1"]);
         assert_eq!(all[0].note.as_deref(), Some("n"));
         assert_eq!(all[0].cwd, "/y");
         assert_eq!(all[0].created_at, created);
@@ -216,5 +245,26 @@ mod tests {
         assert!(
             all[0].native_title.is_none() && all[0].branch.is_none() && all[0].pr_url.is_none()
         );
+        assert!(all[0].tickets.is_empty() && !all[0].tickets_touched);
+        assert_eq!(all[0].agent, DEFAULT_AGENT);
+    }
+
+    #[test]
+    fn new_fields_are_omitted_from_the_file_while_they_have_their_default_value() {
+        let now = Utc::now();
+        let json = serde_json::to_string(&new_session("a", "/x", now, now)).unwrap();
+        assert!(
+            !json.contains("tickets") && !json.contains("agent"),
+            "{json}"
+        );
+
+        let mut s = new_session("a", "/x", now, now);
+        s.tickets = vec!["ABC-1".into()];
+        s.tickets_touched = true;
+        s.agent = "copilot".into();
+        let back: Session = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.tickets, ["ABC-1"]);
+        assert!(back.tickets_touched);
+        assert_eq!(back.agent, "copilot");
     }
 }

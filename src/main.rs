@@ -1,6 +1,7 @@
 mod doctor;
 mod setup;
 mod store;
+mod tickets;
 mod transcript;
 mod tui;
 
@@ -35,7 +36,22 @@ enum Cmd {
         id: Option<String>,
         title: String,
     },
-    /// Add tags to a session (defaults to $CLAUDE_SESSION_ID), e.g. a ticket key
+    /// Add or remove ticket keys such as ABC-123 (session defaults to $CLAUDE_SESSION_ID)
+    Ticket {
+        #[arg(long)]
+        id: Option<String>,
+        /// Remove the keys instead of adding them
+        #[arg(long)]
+        remove: bool,
+        #[arg(required = true)]
+        keys: Vec<String>,
+    },
+    /// Move tags that look like ticket keys into the tickets field (dry run unless --yes)
+    MigrateTickets {
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Add topic tags to a session (defaults to $CLAUDE_SESSION_ID), e.g. observability
     Tag {
         #[arg(long)]
         id: Option<String>,
@@ -58,7 +74,11 @@ enum Cmd {
     /// Remove a session
     Rm { id: String },
     /// Print all sessions
-    List,
+    List {
+        /// Only sessions with this ticket (repeatable: all of them must match)
+        #[arg(long = "ticket", value_name = "KEY")]
+        tickets: Vec<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -86,6 +106,17 @@ fn main() -> Result<()> {
                 s.updated_at = Utc::now();
             })
         }
+        Some(Cmd::Ticket { id, remove, keys }) => modify(id, |s| {
+            for key in &keys {
+                if remove {
+                    tickets::remove(&mut s.tickets, key);
+                } else {
+                    tickets::add(&mut s.tickets, key);
+                }
+            }
+            s.tickets_touched = true;
+        }),
+        Some(Cmd::MigrateTickets { yes }) => migrate_tickets(yes),
         Some(Cmd::Tag { id, tags }) => modify(id, |s| {
             for t in tags
                 .iter()
@@ -120,9 +151,17 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Some(Cmd::List) => {
+        Some(Cmd::List { tickets: wanted }) => {
             let mut out = std::io::stdout().lock();
-            for s in store::load()? {
+            for s in store::load()?
+                .into_iter()
+                .filter(|s| tickets::has_all(s, &wanted))
+            {
+                let tickets = if s.tickets.is_empty() {
+                    String::new()
+                } else {
+                    format!("  [{}]", s.tickets.join(" "))
+                };
                 let tags = if s.tags.is_empty() {
                     String::new()
                 } else {
@@ -130,7 +169,7 @@ fn main() -> Result<()> {
                 };
                 let written = writeln!(
                     out,
-                    "{}  {}  {}  {}{}",
+                    "{}  {}  {}  {}{}{}",
                     s.id,
                     s.updated_at.format("%Y-%m-%d %H:%M"),
                     s.title
@@ -138,6 +177,7 @@ fn main() -> Result<()> {
                         .or(s.suggestion.as_deref().map(|_| "(suggested)"))
                         .unwrap_or("-"),
                     s.cwd,
+                    tickets,
                     tags
                 );
                 // `println!` panics on a closed pipe, e.g. `sessions list | head`.
@@ -148,6 +188,34 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn migrate_tickets(yes: bool) -> Result<()> {
+    let plan = tickets::migration_plan(&store::load()?);
+    for m in &plan {
+        let title = if m.title.is_empty() { "-" } else { &m.title };
+        println!("{}  {}  tags -> tickets: {}", m.id, title, m.keys.join(" "));
+    }
+    if plan.is_empty() {
+        println!("No tags look like ticket keys.");
+        return Ok(());
+    }
+    if !yes {
+        println!(
+            "{} session(s) would change; run `sessions migrate-tickets --yes` to apply",
+            plan.len()
+        );
+        return Ok(());
+    }
+    let path = store::path();
+    let backup = path.with_extension(format!("json.bak-{}", Utc::now().timestamp()));
+    std::fs::copy(&path, &backup).with_context(|| format!("backing up to {}", backup.display()))?;
+    let changed = store::update(|all| tickets::migrate(all))?;
+    println!(
+        "moved the keys of {changed} session(s); the old file is {}",
+        backup.display()
+    );
+    Ok(())
 }
 
 fn non_empty(s: String) -> Result<String> {
@@ -197,8 +265,9 @@ fn hook_output(h: &HookInput, own_title: Option<&str>, exe: &std::path::Path) ->
     let context = format!(
         "Session ID: {id} (also in $CLAUDE_SESSION_ID). Once the topic of this session is clear, \
          give it a short, descriptive title exactly once: {exe} title --id {id} \"<title>\". \
-         Only update it if the topic changes fundamentally. If the work belongs to a ticket or \
-         issue, add its key as a tag: {exe} tag --id {id} <KEY>.",
+         Only update it if the topic changes fundamentally. If the work belongs to tickets or \
+         issues, record their keys: {exe} ticket --id {id} <KEY>... Tags are for topics, such as \
+         observability: {exe} tag --id {id} <TAG>.",
         id = h.session_id,
         exe = exe.display()
     );
