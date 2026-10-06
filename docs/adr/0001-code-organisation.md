@@ -38,7 +38,8 @@ The rules that follow from it:
 
 * `main.rs` only calls `sessions::run()`. All behavior lives in the library.
 * The command line is defined in `cli.rs`. The hook is `hook.rs`. Each non-trivial command is one
-  file under `commands/`. `lib.rs` parses and dispatches.
+  file under `commands/`; the four that edit one session (`title`, `ticket`, `tag`, `note`) share
+  `edit.rs`. `lib.rs` parses and dispatches.
 * Modules are `foo.rs` plus a `foo/` directory when they have cohesive children, not `foo/mod.rs`.
   A module becomes a directory when it has parts that can be read and tested on their own. Today
   that applies to `tui` (state, input, drawing). `store`, `transcript`, `setup` and `doctor` stay
