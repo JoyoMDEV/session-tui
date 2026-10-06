@@ -128,7 +128,7 @@ The agent calls these, but you can too.
 
 ### Tags
 
-Tags are for topics (`observability`, `repair`), not tickets. They are stored lower case with dashes for spaces, so `Cert Manager` and `cert-manager` are one tag. Tags that already exist keep their spelling, and saving the tag editor doesn't rewrite tags you didn't touch.
+Tags are for topics (`observability`, `repair`), not tickets. They are stored lower case with dashes for spaces, so `Cert Manager` and `cert-manager` are one tag. Tags that already exist keep their spelling, and saving the tag editor doesn't rewrite tags you didn't touch. `sessions tag ABC-123` records a ticket key as a ticket instead and says so on stderr; only the exact shape counts, so `utf-8` stays a tag.
 
 To keep the vocabulary small, the hook tells the agent which tags are already in use, with their counts, and asks it to reuse one and add a new tag only if none fits. The list is capped, so it stays small however many tags you have. When a session is resumed the hook also asks the agent to check that the title and tags still fit the work. It does this only at the start of a resumed session, never while the agent works; set `SESSIONS_RESUME_REMINDER=0` to turn it off. Remove a tag with `sessions tag --remove NAME`.
 

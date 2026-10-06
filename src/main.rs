@@ -124,15 +124,29 @@ fn main() -> Result<()> {
             }
         }),
         Some(Cmd::MigrateTickets { yes }) => migrate_tickets(yes),
-        Some(Cmd::Tag { id, remove, names }) => modify(id, |s| {
-            for name in &names {
-                if remove {
-                    tags::remove(&mut s.tags, name);
-                } else {
-                    tags::add(&mut s.tags, name);
-                }
+        Some(Cmd::Tag { id, remove, names }) => {
+            // Tags are topics. A ticket key such as ABC-123 goes to the tickets field instead.
+            let is_key = |n: &String| !remove && tickets::looks_like_key(n.trim());
+            let (keys, names): (Vec<String>, Vec<String>) = names.into_iter().partition(is_key);
+            if !keys.is_empty() {
+                eprintln!(
+                    "{} looks like a ticket key; recorded as a ticket, not a tag",
+                    keys.join(" ")
+                );
             }
-        }),
+            modify(id, |s| {
+                for key in &keys {
+                    tickets::add(&mut s.tickets, key);
+                }
+                for name in &names {
+                    if remove {
+                        tags::remove(&mut s.tags, name);
+                    } else {
+                        tags::add(&mut s.tags, name);
+                    }
+                }
+            })
+        }
         Some(Cmd::Note { id, text }) => {
             let text = text.trim().to_string();
             modify(id, |s| s.note = Some(text).filter(|t| !t.is_empty()))

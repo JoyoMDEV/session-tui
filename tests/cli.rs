@@ -279,6 +279,19 @@ fn title_tag_ticket_and_note_edit_the_session() {
 }
 
 #[test]
+fn tag_records_a_ticket_key_as_a_ticket_not_a_tag() {
+    let env = Env::new("tag-key");
+    env.register("s1", "/w");
+    let out = env.run(&["tag", "--id", "s1", "ABC-123", "auth", "utf-8"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("ABC-123 looks like a ticket key"));
+    let s = env.session("s1");
+    assert_eq!(s["tickets"], json!(["ABC-123"]));
+    // Only the exact shape counts, so `utf-8` stays a tag.
+    assert_eq!(s["tags"], json!(["auth", "utf-8"]));
+}
+
+#[test]
 fn edits_default_to_claude_session_id() {
     let env = Env::new("edit-env-id");
     env.register("s1", "/w");
