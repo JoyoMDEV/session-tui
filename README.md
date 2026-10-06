@@ -117,7 +117,7 @@ The agent calls these, but you can too.
 | `sessions title [--id ID] <title>` | Set the title |
 | `sessions ticket [--id ID] [--remove] <KEY>...` | Add or remove ticket keys |
 | `sessions migrate-tickets [--yes]` | Move tags that look like ticket keys (`ABC-123`) into tickets. Shows what it would change; `--yes` applies it after making a backup |
-| `sessions tag [--id ID] <tag>...` | Add topic tags |
+| `sessions tag [--id ID] [--remove] <tag>...` | Add or remove topic tags |
 | `sessions note [--id ID] <text>` | Set the note (empty text clears it) |
 | `sessions import` | Register transcripts that aren't known yet |
 | `sessions prune [--yes]` | Remove entries whose transcript is gone (dry run without `--yes`) |
@@ -125,6 +125,12 @@ The agent calls these, but you can too.
 | `sessions list [--ticket KEY]...` | Print all entries, or only those with every given ticket |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
+
+### Tags
+
+Tags are for topics (`observability`, `repair`), not tickets. They are stored lower case with dashes for spaces, so `Cert Manager` and `cert-manager` are one tag. Tags that already exist keep their spelling, and saving the tag editor doesn't rewrite tags you didn't touch.
+
+To keep the vocabulary small, the hook tells the agent which tags are already in use, with their counts, and asks it to reuse one and add a new tag only if none fits. The list is capped, so it stays small however many tags you have. When a session is resumed the hook also asks the agent to check that the title and tags still fit the work. It does this only at the start of a resumed session, never while the agent works; set `SESSIONS_RESUME_REMINDER=0` to turn it off. Remove a tag with `sessions tag --remove NAME`.
 
 ### Tickets
 
@@ -151,6 +157,7 @@ The transcript check matters after a Claude Code update. The format is internal 
 | `SESSIONS_FILE` | `<claude dir>/sessions.json` | Where sessions are stored |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config dir, also used to find transcripts |
 | `SESSIONS_CLAUDE_ARGS` | empty | Extra flags added to every `claude --resume` |
+| `SESSIONS_RESUME_REMINDER` | on | Set to `0` to stop the hook asking the agent to re-check title and tags when a session is resumed |
 
 ## How it works
 
