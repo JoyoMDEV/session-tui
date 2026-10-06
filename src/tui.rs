@@ -1,3 +1,6 @@
+//! The ratatui browser. `App` holds all state and handles input without a terminal, so it can be
+//! unit-tested; drawing and the `exec` into `claude --resume` stay at the edge.
+
 use crate::store::{self, Session};
 use crate::{tickets, transcript};
 use anyhow::Result;

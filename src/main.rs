@@ -1,3 +1,7 @@
+//! The `sessions` binary: command line parsing, the SessionStart hook and the small commands
+//! (`title`, `tag`, `ticket`, `note`, `import`, `prune`, `rm`, `list`). Output that may be piped
+//! goes through `writeln!`, never `println!`.
+
 mod doctor;
 mod setup;
 mod store;

@@ -1,3 +1,6 @@
+//! `sessions.json`: the data model and every write to it (exclusive lock, atomic replace, recovery
+//! from a corrupt file). Other modules change sessions only through `update`.
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use fs2::FileExt;
