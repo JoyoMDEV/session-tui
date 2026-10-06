@@ -124,15 +124,39 @@ fn main() -> Result<()> {
             }
         }),
         Some(Cmd::MigrateTickets { yes }) => migrate_tickets(yes),
-        Some(Cmd::Tag { id, remove, names }) => modify(id, |s| {
-            for name in &names {
-                if remove {
-                    tags::remove(&mut s.tags, name);
-                } else {
-                    tags::add(&mut s.tags, name);
+        Some(Cmd::Tag { id, remove, names }) => {
+            // Tags are topics. Refuse a ticket key such as ABC-123 instead of guessing, and say
+            // where it belongs. Nothing is written, so the call can be repeated corrected.
+            if !remove {
+                let keys: Vec<&str> = names
+                    .iter()
+                    .map(|n| n.trim())
+                    .filter(|n| tickets::looks_like_key(n))
+                    .collect();
+                if !keys.is_empty() {
+                    let keys = keys.join(" ");
+                    let id = id
+                        .as_ref()
+                        .map(|id| format!("--id {id} "))
+                        .unwrap_or_default();
+                    bail!(
+                        "{keys} looks like a ticket key, so no tags were changed. Record it as a \
+                         ticket: sessions ticket {id}{keys}. Tags are topics and are written in \
+                         lower case, so if it is a topic, use e.g. {}",
+                        keys.to_lowercase()
+                    );
                 }
             }
-        }),
+            modify(id, |s| {
+                for name in &names {
+                    if remove {
+                        tags::remove(&mut s.tags, name);
+                    } else {
+                        tags::add(&mut s.tags, name);
+                    }
+                }
+            })
+        }
         Some(Cmd::Note { id, text }) => {
             let text = text.trim().to_string();
             modify(id, |s| s.note = Some(text).filter(|t| !t.is_empty()))
@@ -329,23 +353,19 @@ fn hook_output(h: &HookInput, view: &HookView, exe: &std::path::Path) -> serde_j
     serde_json::json!({ "hookSpecificOutput": out })
 }
 
-/// Applies `f` to the session with the given id (default `$CLAUDE_SESSION_ID`), creating it if needed.
+/// Applies `f` to the session with the given id (default `$CLAUDE_SESSION_ID`). An unknown id is
+/// an error, so a typo doesn't create an empty entry; `sessions import` registers older sessions.
 fn modify(id: Option<String>, f: impl FnOnce(&mut store::Session)) -> Result<()> {
     let id = id
         .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
         .context("no --id given and $CLAUDE_SESSION_ID is not set")?;
-    store::update(|sessions| {
-        if !sessions.iter().any(|s| s.id == id) {
-            // Hook may not have run (e.g. session predates the hook); cwd is the best we have.
-            let cwd = std::env::current_dir()
-                .map(|p| p.display().to_string())
-                .unwrap_or_default();
-            store::upsert(sessions, &id, &cwd);
-        }
-        if let Some(s) = sessions.iter_mut().find(|s| s.id == id) {
+    store::update(|sessions| match sessions.iter_mut().find(|s| s.id == id) {
+        Some(s) => {
             f(s);
+            Ok(())
         }
-    })
+        None => bail!("no session {id}; `sessions import` registers sessions from before the hook"),
+    })?
 }
 
 fn prune(yes: bool) -> Result<()> {
