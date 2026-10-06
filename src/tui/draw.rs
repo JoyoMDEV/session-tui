@@ -245,7 +245,54 @@ fn pr_label(url: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::app::app_with;
     use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    /// Draws `app` on a terminal of the given size and returns the screen, one string per row.
+    fn render(app: &mut App, width: u16, height: u16) -> Vec<String> {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| draw(f, app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_list_shows_every_title_and_the_details_pane_on_a_tall_terminal() {
+        let mut app = app_with(3);
+        app.sessions[0].tags = vec!["observability".into()];
+        let screen = render(&mut app, 80, 30).join("\n");
+        for title in ["t0", "t1", "t2"] {
+            assert!(screen.contains(title), "{title} missing:\n{screen}");
+        }
+        assert!(
+            screen.contains("observability"),
+            "details missing:\n{screen}"
+        );
+    }
+
+    #[test]
+    fn a_short_terminal_drops_the_details_pane_and_keeps_the_list() {
+        let mut app = app_with(3);
+        app.sessions[0].tags = vec!["observability".into()];
+        let screen = render(&mut app, 80, MIN_HEIGHT_FOR_DETAILS - 1).join("\n");
+        assert!(screen.contains("t0"), "{screen}");
+        assert!(!screen.contains("title set by you"), "{screen}");
+    }
+
+    #[test]
+    fn drawing_records_how_many_rows_a_page_has() {
+        let mut app = app_with(3);
+        render(&mut app, 80, 30);
+        // Terminal height minus search box (3), details (9), help line (1) and list border (2).
+        assert_eq!(app.page, 30 - 3 - DETAILS_HEIGHT as usize - 1 - 2);
+    }
 
     #[test]
     fn human_size_and_pr_label() {
