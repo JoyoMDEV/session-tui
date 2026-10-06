@@ -134,7 +134,7 @@ To keep the vocabulary small, the hook tells the agent which tags are already in
 
 ### Tickets
 
-Tickets are the keys of issue tracker items, such as `ABC-123`. The agent records them with `sessions ticket`, and you can edit them with `^K`. When a session has none and was never edited, `sessions` takes keys it finds in the session's git branch name (`feat/ABC-123-fix-thing`), and it does this once. The match is deliberately strict (capital letters, a dash, digits), but a branch is only a hint: a session that changed branches can be given the wrong key. Remove it with `^K` and it stays removed.
+Tickets are the keys of issue tracker items, such as `ABC-123`. The agent records them with `sessions ticket`, and you can edit them with `^K`. They come from the agent, from you, or from `sessions migrate-tickets`; nothing is guessed from branch names, because a branch says little about what a session was for.
 
 Keys are stored as you type them and compared ignoring case. Older versions asked the agent to add ticket keys as tags; `sessions migrate-tickets` moves those over.
 

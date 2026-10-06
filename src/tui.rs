@@ -291,7 +291,6 @@ impl App {
                 Field::Tags => s.tags = crate::tags::reconcile(&s.tags, &text),
                 Field::Tickets => {
                     s.tickets = tickets::parse_list(&text);
-                    s.tickets_touched = true;
                 }
                 Field::Note => s.note = Some(text).filter(|t| !t.is_empty()),
                 _ => {}

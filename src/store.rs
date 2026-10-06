@@ -31,10 +31,6 @@ pub struct Session {
     /// Issue tracker keys such as `ABC-123`, kept apart from the topic tags.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tickets: Vec<String>,
-    /// Set once the user or agent has edited the tickets, so a key that was removed isn't
-    /// filled in from the branch name again.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub tickets_touched: bool,
     /// Which coding agent wrote the session. Sessions from before this field are Claude Code's.
     #[serde(default = "default_agent", skip_serializing_if = "is_default_agent")]
     pub agent: String,
@@ -52,10 +48,6 @@ fn default_agent() -> String {
 
 fn is_default_agent(agent: &str) -> bool {
     agent == DEFAULT_AGENT
-}
-
-fn is_false(b: &bool) -> bool {
-    !*b
 }
 
 /// Claude Code's config dir: `$CLAUDE_CONFIG_DIR`, otherwise `~/.claude`.
@@ -146,7 +138,6 @@ pub fn new_session(
         cwd: cwd.to_string(),
         tags: Vec::new(),
         tickets: Vec::new(),
-        tickets_touched: false,
         agent: default_agent(),
         note: None,
         created_at,
@@ -245,7 +236,7 @@ mod tests {
         assert!(
             all[0].native_title.is_none() && all[0].branch.is_none() && all[0].pr_url.is_none()
         );
-        assert!(all[0].tickets.is_empty() && !all[0].tickets_touched);
+        assert!(all[0].tickets.is_empty());
         assert_eq!(all[0].agent, DEFAULT_AGENT);
     }
 
@@ -260,11 +251,9 @@ mod tests {
 
         let mut s = new_session("a", "/x", now, now);
         s.tickets = vec!["ABC-1".into()];
-        s.tickets_touched = true;
         s.agent = "copilot".into();
         let back: Session = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.tickets, ["ABC-1"]);
-        assert!(back.tickets_touched);
         assert_eq!(back.agent, "copilot");
     }
 }
