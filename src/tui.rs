@@ -24,7 +24,7 @@ use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Field {
     Title,
     Tags,
@@ -281,6 +281,16 @@ impl App {
     /// Persists an edit of the selected session. Empty titles are ignored; empty tags/notes clear them.
     fn apply_edit(&mut self, field: Field, text: String) {
         let Some(i) = self.selected() else { return };
+        if field == Field::Tags {
+            let keys = crate::tags::new_ticket_keys(&self.sessions[i].tags, &text);
+            if !keys.is_empty() {
+                self.status = format!(
+                    "{} looks like a ticket key: add it with ^K. Tags are lower case. Not saved",
+                    keys.join(" ")
+                );
+                return;
+            }
+        }
         let id = self.sessions[i].id.clone();
         let res = store::update(|all| {
             let Some(s) = all.iter_mut().find(|s| s.id == id) else {
@@ -754,6 +764,15 @@ mod tests {
         };
         app.clamp();
         app
+    }
+
+    #[test]
+    fn tag_editor_refuses_a_new_ticket_key_and_says_where_it_goes() {
+        let mut app = app_with(1);
+        app.apply_edit(Field::Tags, "auth ABC-123".into());
+        assert!(app.status.starts_with("ABC-123 looks like a ticket key"));
+        assert!(app.status.contains("^K"));
+        assert!(app.sessions[0].tags.is_empty());
     }
 
     #[test]
