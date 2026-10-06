@@ -22,6 +22,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/tickets.rs` | Ticket keys: editing, the `ticket:` search syntax, tag migration |
 | `src/doctor.rs` | `sessions doctor`: install checks, including whether transcripts still parse |
 | `tests/plugin.rs` | Keeps the plugin manifests and the hook consistent with the crate |
+| `tests/cli.rs` | Runs the real binary against temporary directories: hook, setup, doctor, edits, list, prune, import |
 | `tests/readme.rs` | Keeps the README command list in step with `sessions --help` |
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |
 | `install.sh` | Release installer |
