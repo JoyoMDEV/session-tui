@@ -19,7 +19,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `prune`, `rm`, `import`, `migrate-tickets` |
 | `src/store.rs` | `sessions.json`: data model, locking, atomic writes, recovery from a corrupt file |
 | `src/transcript.rs` | Read-only access to Claude Code transcripts: import, title/branch/PR scan, preview text |
-| `src/tui.rs` | The ratatui browser |
+| `src/tui.rs`, `src/tui/` | The ratatui browser: `app.rs` state and edits, `input.rs` keys and mouse, `draw.rs` rendering; `tui.rs` starts it and launches `claude` |
 | `src/setup.rs` | `sessions setup`: merges the hook into Claude Code's `settings.json` |
 | `src/tags.rs` | Topic tags: normalisation, removal, the capped vocabulary the hook shows the agent |
 | `src/tickets.rs` | Ticket keys: editing, the `ticket:` search syntax, tag migration |
