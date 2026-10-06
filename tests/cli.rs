@@ -279,16 +279,33 @@ fn title_tag_ticket_and_note_edit_the_session() {
 }
 
 #[test]
-fn tag_records_a_ticket_key_as_a_ticket_not_a_tag() {
+fn tag_refuses_a_ticket_key_and_says_where_it_belongs() {
     let env = Env::new("tag-key");
     env.register("s1", "/w");
-    let out = env.run(&["tag", "--id", "s1", "ABC-123", "auth", "utf-8"]);
-    assert!(out.status.success(), "{}", stderr(&out));
-    assert!(stderr(&out).contains("ABC-123 looks like a ticket key"));
+    let out = env.run(&["tag", "--id", "s1", "auth", "ABC-123"]);
+    assert!(!out.status.success());
+    let message = stderr(&out);
+    assert!(
+        message.contains("ABC-123 looks like a ticket key"),
+        "{message}"
+    );
+    assert!(
+        message.contains("sessions ticket --id s1 ABC-123"),
+        "{message}"
+    );
+    assert!(message.contains("lower case"), "{message}");
+    // Nothing is written, not even the valid tag in the same call.
     let s = env.session("s1");
-    assert_eq!(s["tickets"], json!(["ABC-123"]));
-    // Only the exact shape counts, so `utf-8` stays a tag.
-    assert_eq!(s["tags"], json!(["auth", "utf-8"]));
+    assert!(s.get("tags").is_none());
+    assert!(s.get("tickets").is_none());
+
+    // Only the exact shape is refused, so `utf-8` and lower case spellings are tags.
+    assert!(
+        env.run(&["tag", "--id", "s1", "utf-8", "abc-123"])
+            .status
+            .success()
+    );
+    assert_eq!(env.session("s1")["tags"], json!(["utf-8", "abc-123"]));
 }
 
 #[test]

@@ -125,19 +125,29 @@ fn main() -> Result<()> {
         }),
         Some(Cmd::MigrateTickets { yes }) => migrate_tickets(yes),
         Some(Cmd::Tag { id, remove, names }) => {
-            // Tags are topics. A ticket key such as ABC-123 goes to the tickets field instead.
-            let is_key = |n: &String| !remove && tickets::looks_like_key(n.trim());
-            let (keys, names): (Vec<String>, Vec<String>) = names.into_iter().partition(is_key);
-            if !keys.is_empty() {
-                eprintln!(
-                    "{} looks like a ticket key; recorded as a ticket, not a tag",
-                    keys.join(" ")
-                );
+            // Tags are topics. Refuse a ticket key such as ABC-123 instead of guessing, and say
+            // where it belongs. Nothing is written, so the call can be repeated corrected.
+            if !remove {
+                let keys: Vec<&str> = names
+                    .iter()
+                    .map(|n| n.trim())
+                    .filter(|n| tickets::looks_like_key(n))
+                    .collect();
+                if !keys.is_empty() {
+                    let keys = keys.join(" ");
+                    let id = id
+                        .as_ref()
+                        .map(|id| format!("--id {id} "))
+                        .unwrap_or_default();
+                    bail!(
+                        "{keys} looks like a ticket key, so no tags were changed. Record it as a \
+                         ticket: sessions ticket {id}{keys}. Tags are topics and are written in \
+                         lower case, so if it is a topic, use e.g. {}",
+                        keys.to_lowercase()
+                    );
+                }
             }
             modify(id, |s| {
-                for key in &keys {
-                    tickets::add(&mut s.tickets, key);
-                }
                 for name in &names {
                     if remove {
                         tags::remove(&mut s.tags, name);
