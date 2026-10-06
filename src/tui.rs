@@ -288,19 +288,7 @@ impl App {
                     s.title = Some(text);
                     s.updated_at = chrono::Utc::now();
                 }
-                Field::Tags => {
-                    let mut tags: Vec<String> = Vec::new();
-                    for t in text
-                        .split_whitespace()
-                        .map(|t| t.trim_start_matches('#'))
-                        .filter(|t| !t.is_empty())
-                    {
-                        if !tags.iter().any(|x| x == t) {
-                            tags.push(t.to_string());
-                        }
-                    }
-                    s.tags = tags;
-                }
+                Field::Tags => s.tags = crate::tags::reconcile(&s.tags, &text),
                 Field::Tickets => {
                     s.tickets = tickets::parse_list(&text);
                     s.tickets_touched = true;
