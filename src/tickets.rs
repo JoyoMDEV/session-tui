@@ -1,5 +1,4 @@
-//! Ticket keys (`ABC-123`) on sessions: editing, finding them in branch names, and the search
-//! syntax. Tickets are references to an issue tracker; tags are topics, and the two stay apart.
+//! Ticket keys (`ABC-123`) on sessions: editing and the search syntax. Tickets are references to an issue tracker; tags are topics, and the two stay apart.
 
 use crate::store::Session;
 
@@ -42,7 +41,7 @@ pub fn parse_list(text: &str) -> Vec<String> {
 }
 
 /// `ABC-123`: 2 to 10 capitals or digits starting with a capital, a dash, and digits. Only used to
-/// recognise keys that nobody typed as such (tags, branch names), so it is deliberately strict:
+/// recognise keys that nobody typed as such (tags), so it is deliberately strict:
 /// `utf-8` and `gpt-4` must not count.
 pub fn looks_like_key(s: &str) -> bool {
     let Some((prefix, number)) = s.split_once('-') else {
@@ -55,54 +54,6 @@ pub fn looks_like_key(s: &str) -> bool {
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
         && !number.is_empty()
         && number.chars().all(|c| c.is_ascii_digit())
-}
-
-/// The ticket keys in a branch name such as `feat/ABC-123-fix-thing` or `ABC-5/other`.
-pub fn find_in_branch(branch: &str) -> Vec<String> {
-    let chars: Vec<char> = branch.chars().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        let at_boundary = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
-        if at_boundary && chars[i].is_ascii_uppercase() {
-            let mut j = i;
-            while j < chars.len() && (chars[j].is_ascii_uppercase() || chars[j].is_ascii_digit()) {
-                j += 1;
-            }
-            let digits_start = j + 1;
-            if chars.get(j) == Some(&'-') && digits_start < chars.len() {
-                let mut k = digits_start;
-                while k < chars.len() && chars[k].is_ascii_digit() {
-                    k += 1;
-                }
-                let ends_cleanly = chars.get(k).is_none_or(|c| !c.is_ascii_alphanumeric());
-                let candidate: String = chars[i..k].iter().collect();
-                if k > digits_start && ends_cleanly && looks_like_key(&candidate) {
-                    add(&mut out, &candidate);
-                    i = k;
-                    continue;
-                }
-            }
-            i = j.max(i + 1);
-            continue;
-        }
-        i += 1;
-    }
-    out
-}
-
-/// Fills the tickets of a session from its branch name, once. A session whose tickets were ever
-/// edited, or that already has some, is left alone, so a key the user removed stays removed.
-pub fn autofill(s: &mut Session) -> bool {
-    if s.tickets_touched || !s.tickets.is_empty() {
-        return false;
-    }
-    let Some(branch) = &s.branch else {
-        return false;
-    };
-    let found = find_in_branch(branch);
-    s.tickets = found;
-    !s.tickets.is_empty()
 }
 
 /// Splits a search query into the free text and the exact `ticket:KEY` filters in it.
@@ -169,7 +120,6 @@ pub fn migrate(sessions: &mut [Session]) -> usize {
         for key in &keys {
             add(&mut s.tickets, key);
         }
-        s.tickets_touched = true;
         changed += 1;
     }
     changed
@@ -217,53 +167,6 @@ mod tests {
         ] {
             assert!(!looks_like_key(bad), "{bad}");
         }
-    }
-
-    #[test]
-    fn finds_keys_in_branch_names() {
-        assert_eq!(
-            find_in_branch("feat/CLOUD-593-per-host-waf-alerts"),
-            ["CLOUD-593"]
-        );
-        assert_eq!(
-            find_in_branch("CLOUD-505/root-notification-policy"),
-            ["CLOUD-505"]
-        );
-        assert_eq!(find_in_branch("fix/ABC-1-and-DEF-22"), ["ABC-1", "DEF-22"]);
-        assert_eq!(
-            find_in_branch("fix/ABC-1-and-ABC-1"),
-            ["ABC-1"],
-            "no duplicates"
-        );
-        assert_eq!(find_in_branch("main"), Vec::<String>::new());
-        assert_eq!(find_in_branch("feat/utf-8-support"), Vec::<String>::new());
-        assert_eq!(
-            find_in_branch("release/V2-1x"),
-            Vec::<String>::new(),
-            "digits must end the key"
-        );
-        assert_eq!(find_in_branch("feature/XABC-123"), ["XABC-123"]);
-        assert_eq!(
-            find_in_branch("fooABC-123"),
-            Vec::<String>::new(),
-            "must start at a word boundary"
-        );
-    }
-
-    #[test]
-    fn autofill_runs_once_and_respects_removal() {
-        let mut s = session();
-        assert!(!autofill(&mut s), "no branch");
-        s.branch = Some("feat/ABC-7-x".into());
-        assert!(autofill(&mut s));
-        assert_eq!(s.tickets, ["ABC-7"]);
-        assert!(!autofill(&mut s), "already has tickets");
-
-        // The user removed the key and thereby touched the field: it must not come back.
-        s.tickets.clear();
-        s.tickets_touched = true;
-        assert!(!autofill(&mut s));
-        assert!(s.tickets.is_empty());
     }
 
     #[test]
@@ -316,7 +219,6 @@ mod tests {
         assert_eq!(migrate(&mut all), 1);
         assert_eq!(all[0].tags, ["observability", "utf-8"]);
         assert_eq!(all[0].tickets, ["CLOUD-593"]);
-        assert!(all[0].tickets_touched);
         assert_eq!(all[1].tags, ["repair"]);
         assert_eq!(migrate(&mut all), 0, "a second run changes nothing");
     }

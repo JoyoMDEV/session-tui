@@ -232,7 +232,6 @@ pub fn refresh_meta(sessions: &mut [Session]) {
         s.native_title = meta.native_title.or(s.native_title.take());
         s.branch = meta.branch.or(s.branch.take());
         s.pr_url = meta.pr_url.or(s.pr_url.take());
-        crate::tickets::autofill(s);
     }
 }
 

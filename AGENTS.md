@@ -19,7 +19,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/tui.rs` | The ratatui browser |
 | `src/setup.rs` | `sessions setup`: merges the hook into Claude Code's `settings.json` |
 | `src/tags.rs` | Topic tags: normalisation, removal, the capped vocabulary the hook shows the agent |
-| `src/tickets.rs` | Ticket keys: editing, finding them in branch names, the `ticket:` search syntax, tag migration |
+| `src/tickets.rs` | Ticket keys: editing, the `ticket:` search syntax, tag migration |
 | `src/doctor.rs` | `sessions doctor`: install checks, including whether transcripts still parse |
 | `tests/plugin.rs` | Keeps the plugin manifests and the hook consistent with the crate |
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |

@@ -118,7 +118,6 @@ fn main() -> Result<()> {
                     tickets::add(&mut s.tickets, key);
                 }
             }
-            s.tickets_touched = true;
         }),
         Some(Cmd::MigrateTickets { yes }) => migrate_tickets(yes),
         Some(Cmd::Tag { id, remove, names }) => modify(id, |s| {
