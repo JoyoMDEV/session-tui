@@ -66,6 +66,14 @@ pub fn reconcile(existing: &[String], text: &str) -> Vec<String> {
     out
 }
 
+/// The words in `text` that look like ticket keys (`ABC-123`) and aren't among the `existing`
+/// tags. Old files may hold such a tag, and saving the editor untouched must not trip over it.
+pub fn new_ticket_keys<'a>(existing: &[String], text: &'a str) -> Vec<&'a str> {
+    text.split_whitespace()
+        .filter(|w| tickets::looks_like_key(w) && !existing.iter().any(|t| t == w))
+        .collect()
+}
+
 /// The tags in use, most used first (ties by name), without ticket-like keys, which belong in
 /// the tickets field and shouldn't be suggested as topics.
 pub fn vocabulary(sessions: &[Session]) -> Vec<(String, usize)> {
@@ -105,6 +113,15 @@ mod tests {
     use super::*;
     use crate::store::new_session;
     use chrono::Utc;
+
+    #[test]
+    fn new_ticket_keys_skips_tags_that_are_already_there() {
+        let existing = vec!["ABC-1".to_string(), "auth".to_string()];
+        assert_eq!(
+            new_ticket_keys(&existing, "ABC-1 auth ABC-2 utf-8 abc-3"),
+            ["ABC-2"]
+        );
+    }
 
     fn session(tags: &[&str]) -> Session {
         let now = Utc::now();
