@@ -22,6 +22,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/tickets.rs` | Ticket keys: editing, the `ticket:` search syntax, tag migration |
 | `src/doctor.rs` | `sessions doctor`: install checks, including whether transcripts still parse |
 | `tests/plugin.rs` | Keeps the plugin manifests and the hook consistent with the crate |
+| `tests/readme.rs` | Keeps the README command list in step with `sessions --help` |
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
@@ -58,6 +59,23 @@ CI runs formatting, clippy and shellcheck on Linux and the tests on Linux and ma
   check how the TUI looks and feels, drive it in tmux against a temporary sessions file.
 - After moving or renaming your checkout, run `cargo clean`. `tests/plugin.rs` embeds the manifest
   path at compile time, so a stale build looks for the old location.
+
+## Documentation
+
+- The README is the user documentation. Change it in the same PR as any change in behavior, flags,
+  commands or configuration. `tests/readme.rs` fails if a command from `sessions --help` is missing
+  from the README.
+- Put something in `docs/` only when it is too long for the README: a reference (the `sessions.json`
+  format) or an explanation (how the hook works, why transcripts are read tolerantly). Keep the
+  [Diátaxis](https://diataxis.fr) kinds apart: `docs/reference/` and `docs/explanation/`, one kind
+  per page. How-to steps and the tutorial stay in the README. Link every page from the README.
+- Record a decision that is costly to reverse as an ADR in `docs/adr/`, numbered `NNNN-title.md`,
+  in the [MADR](https://adr.github.io/madr/) format. Don't edit an accepted ADR; supersede it with a
+  new one.
+- Each module starts with a `//!` comment saying what it owns and what it must not do. Comment the
+  why of non-obvious code, not the what.
+- `AGENTS.md` holds conventions and process, not user documentation. When the layout table or a
+  command here goes stale, fix it in the PR that made it stale.
 
 ## Commits
 
