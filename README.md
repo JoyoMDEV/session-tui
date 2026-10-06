@@ -192,6 +192,8 @@ cargo test
 claude plugin validate --strict .
 ```
 
+How the code is organised, and when to reconsider that, is recorded in [ADR 0001](docs/adr/0001-code-organisation.md). Conventions for contributors are in [AGENTS.md](AGENTS.md).
+
 `install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux, publishes them as a GitHub release and updates the formula in the [Homebrew tap](https://github.com/JoyoMDEV/homebrew-tap). The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
 
 ## License
