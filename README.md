@@ -1,11 +1,11 @@
 # sessions
 
-A logbook for your [Claude Code](https://claude.com/claude-code) sessions: titles, tags and notes that the agent keeps for you, searchable across all your projects.
+A logbook for your [Claude Code](https://claude.com/claude-code) sessions: titles, tickets, tags and notes that the agent keeps for you, searchable across all your projects.
 
 Claude Code's own `claude --resume` picker is good for jumping back into recent work in the current repository. `sessions` is for finding work by what it was about, and keeping that around:
 
-- **The agent keeps the log.** A hook tells the agent its session ID and asks it to give the session a title once the topic is clear, and to tag it with the ticket key if there is one. You don't have to name anything by hand.
-- **Find work by ticket, branch or PR.** Tags, notes, branch and pull request URL are all searchable, across every project. `^B` narrows the list to the branch you have checked out.
+- **The agent keeps the log.** A hook tells the agent its session ID and asks it to give the session a title once the topic is clear, and to record the keys of any tickets it works on. Tags are for topics such as `observability`; tickets are a separate field. You don't have to name anything by hand.
+- **Find work by ticket, branch or PR.** A session can have several tickets, and `ticket:ABC-123` in the search box shows exactly those sessions. Tags, notes, branch and pull request URL are searchable too, across every project. `^B` narrows the list to the branch you have checked out.
 - **Resume where the session lived.** Enter changes into the session's original directory and resumes there, optionally with extra `claude` flags such as `--fork-session`.
 - **The history outlives Claude's cleanup.** Claude Code deletes old transcripts after 30 days by default. `sessions` keeps the entry, with its title, branch, PR, tags and note, so you can still tell what you worked on back then. Such a session can no longer be resumed.
 - **A plain JSON file you own.** Everything is in `sessions.json`, and `sessions list` prints it for scripts.
@@ -97,7 +97,8 @@ Run `sessions` to open the browser.
 | `Tab` | Show or hide empty sessions (no title and no prompt) |
 | `^L` | Only sessions in or around the current directory |
 | `^B` | Only sessions on the git branch checked out in the current directory |
-| `^R` `^T` `^E` | Edit title, tags, note |
+| `^R` `^T` `^K` `^E` | Edit title, tags, tickets, note |
+| `ticket:ABC-123` (in the search box) | Only sessions with exactly that ticket, ignoring case; repeat it to require several |
 | `^X` | Delete the entry (asks first) |
 | `Esc` | Quit |
 
@@ -114,14 +115,22 @@ The agent calls these, but you can too.
 | `sessions setup [--force]` | Add or repair the SessionStart hook in Claude Code's `settings.json` |
 | `sessions doctor` | Check the install and say how to fix what's wrong |
 | `sessions title [--id ID] <title>` | Set the title |
-| `sessions tag [--id ID] <tag>...` | Add tags |
+| `sessions ticket [--id ID] [--remove] <KEY>...` | Add or remove ticket keys |
+| `sessions migrate-tickets [--yes]` | Move tags that look like ticket keys (`ABC-123`) into tickets. Shows what it would change; `--yes` applies it after making a backup |
+| `sessions tag [--id ID] <tag>...` | Add topic tags |
 | `sessions note [--id ID] <text>` | Set the note (empty text clears it) |
 | `sessions import` | Register transcripts that aren't known yet |
 | `sessions prune [--yes]` | Remove entries whose transcript is gone (dry run without `--yes`) |
 | `sessions rm <id>` | Remove an entry |
-| `sessions list` | Print all entries |
+| `sessions list [--ticket KEY]...` | Print all entries, or only those with every given ticket |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
+
+### Tickets
+
+Tickets are the keys of issue tracker items, such as `ABC-123`. The agent records them with `sessions ticket`, and you can edit them with `^K`. When a session has none and was never edited, `sessions` takes keys it finds in the session's git branch name (`feat/ABC-123-fix-thing`), and it does this once. The match is deliberately strict (capital letters, a dash, digits), but a branch is only a hint: a session that changed branches can be given the wrong key. Remove it with `^K` and it stays removed.
+
+Keys are stored as you type them and compared ignoring case. Older versions asked the agent to add ticket keys as tags; `sessions migrate-tickets` moves those over.
 
 ## Troubleshooting
 

@@ -1,5 +1,5 @@
 use crate::store::{self, Session};
-use crate::transcript;
+use crate::{tickets, transcript};
 use anyhow::Result;
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use ratatui::{
@@ -25,6 +25,7 @@ use std::process::Command;
 enum Field {
     Title,
     Tags,
+    Tickets,
     Note,
     Flags,
 }
@@ -34,6 +35,7 @@ impl Field {
         match self {
             Field::Title => "Title",
             Field::Tags => "Tags (space-separated)",
+            Field::Tickets => "Tickets (space or comma separated)",
             Field::Note => "Note",
             Field::Flags => "claude flags",
         }
@@ -113,9 +115,9 @@ struct App {
 }
 
 /// Below this terminal height the details pane is dropped to leave room for the list.
-const MIN_HEIGHT_FOR_DETAILS: u16 = 24;
-/// Border plus six lines of details.
-const DETAILS_HEIGHT: u16 = 8;
+const MIN_HEIGHT_FOR_DETAILS: u16 = 25;
+/// Border plus seven lines of details.
+const DETAILS_HEIGHT: u16 = 9;
 /// Rows scrolled per mouse wheel notch.
 const WHEEL_STEP: isize = 3;
 
@@ -138,6 +140,7 @@ impl App {
     /// Indices into `sessions`, filtered and ordered for display.
     fn visible(&self) -> Vec<usize> {
         let matcher = SkimMatcherV2::default();
+        let (free_text, ticket_filters) = tickets::parse_query(&self.query);
         let mut scored: Vec<(i64, usize)> = self
             .sessions
             .iter()
@@ -149,21 +152,23 @@ impl App {
                     .as_ref()
                     .is_none_or(|b| s.branch.as_ref() == Some(b))
             })
+            .filter(|(_, s)| tickets::has_all(s, &ticket_filters))
             .filter_map(|(i, s)| {
-                if self.query.is_empty() {
+                if free_text.is_empty() {
                     return Some((0, i));
                 }
                 let hay = format!(
-                    "{} {} {} {} {} {}",
+                    "{} {} {} {} {} {} {}",
                     shown_title(s).1,
                     s.cwd,
+                    s.tickets.join(" "),
                     s.tags.join(" "),
                     s.note.as_deref().unwrap_or(""),
                     s.branch.as_deref().unwrap_or(""),
                     s.pr_url.as_deref().unwrap_or("")
                 );
                 matcher
-                    .fuzzy_match(&hay, &self.query)
+                    .fuzzy_match(&hay, &free_text)
                     .map(|score| (score, i))
             })
             .collect();
@@ -264,6 +269,7 @@ impl App {
         Some(match field {
             Field::Title => shown_title(s).1.to_string(),
             Field::Tags => s.tags.join(" "),
+            Field::Tickets => s.tickets.join(" "),
             Field::Note => s.note.clone().unwrap_or_default(),
             Field::Flags => default_args(),
         })
@@ -294,6 +300,10 @@ impl App {
                         }
                     }
                     s.tags = tags;
+                }
+                Field::Tickets => {
+                    s.tickets = tickets::parse_list(&text);
+                    s.tickets_touched = true;
                 }
                 Field::Note => s.note = Some(text).filter(|t| !t.is_empty()),
                 _ => {}
@@ -485,10 +495,11 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Result<Option<La
                 }
                 KeyCode::Char('b') if ctrl => app.toggle_branch_filter(),
                 KeyCode::Char('v') if ctrl => app.open_preview(terminal.size()?.width),
-                KeyCode::Char(c @ ('r' | 't' | 'e' | 'o')) if ctrl => {
+                KeyCode::Char(c @ ('r' | 't' | 'k' | 'e' | 'o')) if ctrl => {
                     let field = match c {
                         'r' => Field::Title,
                         't' => Field::Tags,
+                        'k' => Field::Tickets,
                         'e' => Field::Note,
                         _ => Field::Flags,
                     };
@@ -548,6 +559,10 @@ fn draw(f: &mut Frame, app: &mut App) {
     if let Some(branch) = &app.only_branch {
         search_title += &format!(" · branch {branch}");
     }
+    let wanted = tickets::parse_query(&app.query).1;
+    if !wanted.is_empty() {
+        search_title += &format!(" · ticket {}", wanted.join(", "));
+    }
     search_title.push(' ');
     f.render_widget(
         Paragraph::new(format!("> {}", app.query))
@@ -585,6 +600,9 @@ fn draw(f: &mut Frame, app: &mut App) {
                 TitleKind::Suggestion => Span::raw(format!("~ {title}")).dim().italic(),
                 TitleKind::Missing => Span::raw("(untitled)").dim().italic(),
             });
+            if !s.tickets.is_empty() {
+                spans.push(Span::raw(format!("  [{}]", s.tickets.join(" "))).magenta());
+            }
             if !s.tags.is_empty() {
                 spans.push(Span::raw(format!("  #{}", s.tags.join(" #"))).yellow());
             }
@@ -633,9 +651,14 @@ fn draw(f: &mut Frame, app: &mut App) {
                 TitleKind::Missing => "no title",
             };
             format!(
-                "cwd:   {}\nid:    {}\ngit:   {git}\ntags:  {}\nnote:  {}\nfile:  {size}  ·  {title_from}",
+                "cwd:     {}\nid:      {}\ngit:     {git}\ntickets: {}\ntags:    {}\nnote:    {}\nfile:    {size}  ·  {title_from}",
                 s.cwd,
                 s.id,
+                if s.tickets.is_empty() {
+                    "-".to_string()
+                } else {
+                    s.tickets.join(" ")
+                },
                 if s.tags.is_empty() {
                     "-".to_string()
                 } else {
@@ -660,7 +683,7 @@ fn draw(f: &mut Frame, app: &mut App) {
         Mode::Preview(..) => Line::from("".dim()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^V preview  ^O flags  Tab empty  ^L dir  ^B branch  ^R title  ^T tags  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^V preview  ^O flags  Tab empty  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);
@@ -779,6 +802,32 @@ mod tests {
         app.query = "oomlimit".into();
         assert_eq!(app.visible(), [0]);
         app.query = "grafana".into();
+        assert_eq!(app.visible(), [1]);
+    }
+
+    #[test]
+    fn ticket_filter_is_exact_and_ignores_case_while_the_rest_stays_fuzzy() {
+        let mut app = app_with(4);
+        app.sessions[0].tickets = vec!["ABC-1".into()];
+        app.sessions[1].tickets = vec!["ABC-12".into(), "DEF-2".into()];
+        app.sessions[2].tickets = vec!["abc-1".into(), "DEF-2".into()];
+        app.sessions[2].title = Some("grafana".into());
+
+        app.query = "ticket:abc-1".into();
+        assert_eq!(app.visible(), [0, 2], "ABC-12 is a different ticket");
+        app.query = "ticket:ABC-1 ticket:DEF-2".into();
+        assert_eq!(app.visible(), [2], "every filter has to match");
+        app.query = "ticket:ABC-1 grafana".into();
+        assert_eq!(app.visible(), [2], "free text narrows within the filter");
+        app.query = "ticket:".into();
+        assert_eq!(app.visible().len(), 4, "an unfinished filter hides nothing");
+    }
+
+    #[test]
+    fn plain_search_also_finds_sessions_by_ticket_text() {
+        let mut app = app_with(2);
+        app.sessions[1].tickets = vec!["CLOUD-593".into()];
+        app.query = "cloud593".into();
         assert_eq!(app.visible(), [1]);
     }
 
