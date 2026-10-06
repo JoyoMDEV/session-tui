@@ -329,23 +329,19 @@ fn hook_output(h: &HookInput, view: &HookView, exe: &std::path::Path) -> serde_j
     serde_json::json!({ "hookSpecificOutput": out })
 }
 
-/// Applies `f` to the session with the given id (default `$CLAUDE_SESSION_ID`), creating it if needed.
+/// Applies `f` to the session with the given id (default `$CLAUDE_SESSION_ID`). An unknown id is
+/// an error, so a typo doesn't create an empty entry; `sessions import` registers older sessions.
 fn modify(id: Option<String>, f: impl FnOnce(&mut store::Session)) -> Result<()> {
     let id = id
         .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
         .context("no --id given and $CLAUDE_SESSION_ID is not set")?;
-    store::update(|sessions| {
-        if !sessions.iter().any(|s| s.id == id) {
-            // Hook may not have run (e.g. session predates the hook); cwd is the best we have.
-            let cwd = std::env::current_dir()
-                .map(|p| p.display().to_string())
-                .unwrap_or_default();
-            store::upsert(sessions, &id, &cwd);
-        }
-        if let Some(s) = sessions.iter_mut().find(|s| s.id == id) {
+    store::update(|sessions| match sessions.iter_mut().find(|s| s.id == id) {
+        Some(s) => {
             f(s);
+            Ok(())
         }
-    })
+        None => bail!("no session {id}; `sessions import` registers sessions from before the hook"),
+    })?
 }
 
 fn prune(yes: bool) -> Result<()> {

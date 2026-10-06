@@ -292,6 +292,24 @@ fn edits_default_to_claude_session_id() {
 }
 
 #[test]
+fn editing_an_unknown_session_is_an_error_and_creates_nothing() {
+    let env = Env::new("edit-unknown");
+    env.register("s1", "/w");
+    for args in [
+        &["title", "--id", "typo", "x"][..],
+        &["tag", "--id", "typo", "x"],
+        &["ticket", "--id", "typo", "ABC-1"],
+        &["note", "--id", "typo", "x"],
+    ] {
+        let out = env.run(args);
+        assert!(!out.status.success(), "{args:?} succeeded");
+        assert!(stderr(&out).contains("no session typo"), "{}", stderr(&out));
+    }
+    let ids: Vec<_> = env.sessions().iter().map(|s| s["id"].clone()).collect();
+    assert_eq!(ids, [json!("s1")]);
+}
+
+#[test]
 fn an_empty_title_is_an_error() {
     let env = Env::new("empty-title");
     env.register("s1", "/w");
