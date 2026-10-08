@@ -123,7 +123,7 @@ The agent calls these, but you can too.
 | `sessions prune [--yes]` | Remove entries whose transcript is gone (dry run without `--yes`) |
 | `sessions rm <id>` | Remove an entry |
 | `sessions list [filters] [--json]` | Print all entries, or only those that match every filter. See [Filtering `list` and `log`](#filtering-list-and-log) |
-| `sessions log [filters] [--markdown]` | Print a timeline of the matching entries, oldest first. See [Timeline with `log`](#timeline-with-log) |
+| `sessions log [filters] [--markdown]` | Print a timeline of the matching entries, newest first. See [Timeline with `log`](#timeline-with-log) |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
 
@@ -143,12 +143,12 @@ All filters must match. Tags, tickets and branches are compared exactly, not fuz
 
 #### Timeline with `log`
 
-`sessions log` takes the same filters as `list` and prints one line per matching session, oldest first by the day it was started, with the title, branch, pull request and directory where they are known:
+`sessions log` takes the same filters as `list` and prints one line per matching session, newest first by the day it was started, with the title, branch, pull request and directory where they are known:
 
 ```text
 $ sessions log --ticket ABC-123
-2026-10-06  Fix login redirect  feat/login  PR #558  /work/app
 2026-10-08  Add rate limit  feat/limit  /work/app
+2026-10-06  Fix login redirect  feat/login  PR #558  /work/app
 ```
 
 `--markdown` prints a list to paste into a ticket or a status report, with the pull request as a link and characters that Markdown would format escaped:

@@ -491,7 +491,7 @@ fn list_json_prints_the_public_view_of_the_matching_sessions() {
 }
 
 #[test]
-fn log_prints_a_timeline_oldest_first_and_takes_the_list_filters() {
+fn log_prints_a_timeline_newest_first_and_takes_the_list_filters() {
     let env = Env::new("log");
     env.write_sessions(json!([
         {"id": "b", "cwd": "/work/app", "title": "Add rate limit", "tickets": ["ABC-1"],
@@ -506,14 +506,14 @@ fn log_prints_a_timeline_oldest_first_and_takes_the_list_filters() {
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(
         stdout(&out),
-        "2026-10-06  Fix login  feat/login  PR #558  /work/app\n\
+        "2026-10-08  Add rate limit  feat/limit  /work/app\n\
          2026-10-07  (untitled)  /work/other\n\
-         2026-10-08  Add rate limit  feat/limit  /work/app\n"
+         2026-10-06  Fix login  feat/login  PR #558  /work/app\n"
     );
 
     let ticket = stdout(&env.run(&["log", "--ticket", "ABC-1"]));
     assert_eq!(ticket.lines().count(), 2);
-    assert!(ticket.starts_with("2026-10-06"));
+    assert!(ticket.starts_with("2026-10-08"));
     assert!(stdout(&env.run(&["log", "--tag", "nope"])).is_empty());
 }
 

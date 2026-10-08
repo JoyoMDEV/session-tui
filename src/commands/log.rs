@@ -1,4 +1,4 @@
-//! `log`: a timeline of the matching sessions, oldest first, as text or as a Markdown list.
+//! `log`: a timeline of the matching sessions, newest first, as text or as a Markdown list.
 
 use crate::cli::FilterArgs;
 use crate::query::{self, Filters};
@@ -25,10 +25,10 @@ pub fn run(args: FilterArgs, markdown: bool) -> Result<()> {
     Ok(())
 }
 
-/// The matching sessions, oldest first by the day they were started.
+/// The matching sessions, newest first by the day they were started.
 fn timeline<'a>(sessions: &'a [Session], filters: &Filters) -> Vec<&'a Session> {
     let mut chosen: Vec<_> = sessions.iter().filter(|s| filters.matches(s)).collect();
-    chosen.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+    chosen.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
     chosen
 }
 
@@ -106,7 +106,7 @@ mod tests {
     }
 
     #[test]
-    fn the_timeline_is_oldest_first_and_filtered() {
+    fn the_timeline_is_newest_first_and_filtered() {
         let mut late = session("late", 9);
         late.tags = vec!["auth".into()];
         let sessions = vec![late, session("early", 2), session("mid", 5)];
@@ -116,7 +116,7 @@ mod tests {
                 .map(|s| s.id.clone())
                 .collect()
         };
-        assert_eq!(ids(&Filters::default()), ["early", "mid", "late"]);
+        assert_eq!(ids(&Filters::default()), ["late", "mid", "early"]);
         let auth = Filters {
             tags: vec!["auth".into()],
             ..Default::default()

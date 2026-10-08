@@ -76,7 +76,7 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Print a timeline of sessions, oldest first, for a status update or a ticket
+    /// Print a timeline of sessions, newest first, for a status update or a ticket
     Log {
         #[command(flatten)]
         filters: FilterArgs,
