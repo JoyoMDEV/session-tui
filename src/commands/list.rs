@@ -1,15 +1,44 @@
-//! `list`: print every session, or only those with all the given tickets.
+//! `list`: print sessions, one line each or as JSON, optionally filtered.
 
-use crate::{store, tickets};
+use crate::query::{self, Filters};
+use crate::store;
 use anyhow::Result;
+use chrono::Utc;
 use std::io::Write;
 
-pub fn run(wanted: Vec<String>) -> Result<()> {
+/// The arguments of `list`, as typed.
+pub struct Options {
+    pub tickets: Vec<String>,
+    pub tags: Vec<String>,
+    pub branch: Option<String>,
+    pub cwd: Option<String>,
+    pub since: Option<String>,
+    pub json: bool,
+}
+
+pub fn run(opts: Options) -> Result<()> {
+    let filters = Filters {
+        tickets: opts.tickets,
+        tags: opts.tags,
+        branch: opts.branch,
+        cwd: opts.cwd.as_deref().map(query::absolute_dir).transpose()?,
+        since: opts
+            .since
+            .as_deref()
+            .map(|s| query::parse_since(s, Utc::now()))
+            .transpose()?,
+    };
+    let sessions = store::load()?;
+    let chosen: Vec<_> = sessions.iter().filter(|s| filters.matches(s)).collect();
+
     let mut out = std::io::stdout().lock();
-    for s in store::load()?
-        .into_iter()
-        .filter(|s| tickets::has_all(s, &wanted))
-    {
+    if opts.json {
+        let views: Vec<_> = chosen.iter().map(|s| query::view(s)).collect();
+        // A closed pipe is not an error worth reporting, as for the text output below.
+        let _ = writeln!(out, "{}", serde_json::to_string_pretty(&views)?);
+        return Ok(());
+    }
+    for s in chosen {
         let tickets = if s.tickets.is_empty() {
             String::new()
         } else {

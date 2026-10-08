@@ -374,6 +374,122 @@ fn list_prints_one_line_per_session_and_filters_by_ticket() {
     assert!(both.starts_with("s1"));
 }
 
+/// Three sessions with different tags, tickets, branches, directories and ages.
+fn filtered_env(name: &str) -> Env {
+    let env = Env::new(name);
+    let now = chrono::Utc::now();
+    let ago = |days: i64| (now - chrono::Duration::days(days)).to_rfc3339();
+    env.write_sessions(json!([
+        {"id": "new", "cwd": "/work/app/api", "title": "Fix login", "branch": "feat/login",
+         "tags": ["auth"], "tickets": ["ABC-1"], "created_at": ago(1), "updated_at": ago(1)},
+        {"id": "mid", "cwd": "/work/app", "tags": ["auth", "repair"], "tickets": ["ABC-12"],
+         "created_at": ago(10), "updated_at": ago(10)},
+        {"id": "old", "cwd": "/work/other", "branch": "main",
+         "created_at": ago(60), "updated_at": ago(60)},
+    ]));
+    env
+}
+
+fn listed_ids(env: &Env, args: &[&str]) -> Vec<String> {
+    let mut all = vec!["list"];
+    all.extend_from_slice(args);
+    let out = env.run(&all);
+    assert!(out.status.success(), "{args:?}: {}", stderr(&out));
+    stdout(&out)
+        .lines()
+        .map(|l| l.split_whitespace().next().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn list_filters_combine_and_match_exactly() {
+    let env = filtered_env("list-filters");
+    assert_eq!(listed_ids(&env, &["--tag", "auth"]), ["new", "mid"]);
+    assert_eq!(
+        listed_ids(&env, &["--tag", "AUTH", "--tag", "repair"]),
+        ["mid"]
+    );
+    assert!(
+        listed_ids(&env, &["--tag", "aut"]).is_empty(),
+        "tags are not fuzzy"
+    );
+    assert_eq!(
+        listed_ids(&env, &["--ticket", "ABC-1"]),
+        ["new"],
+        "not ABC-12"
+    );
+    assert_eq!(listed_ids(&env, &["--branch", "main"]), ["old"]);
+    assert_eq!(listed_ids(&env, &["--cwd", "/work/app"]), ["new", "mid"]);
+    assert_eq!(
+        listed_ids(&env, &["--cwd", "/work/ap"]),
+        Vec::<String>::new()
+    );
+    assert_eq!(listed_ids(&env, &["--since", "7d"]), ["new"]);
+    assert_eq!(listed_ids(&env, &["--since", "2w"]), ["new", "mid"]);
+    assert_eq!(
+        listed_ids(&env, &["--tag", "auth", "--since", "7d"]),
+        ["new"]
+    );
+}
+
+#[test]
+fn list_cwd_takes_a_relative_path_from_the_current_directory() {
+    let env = filtered_env("list-cwd-relative");
+    let here = env.dir.join("proj");
+    fs::create_dir_all(&here).unwrap();
+    // The process sees the real path (on macOS /var is a link to /private/var).
+    let here = here.canonicalize().unwrap();
+    env.write_sessions(json!([
+        {"id": "in", "cwd": here.join("sub").display().to_string(),
+         "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"},
+        {"id": "out", "cwd": "/elsewhere",
+         "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"},
+    ]));
+    let out = env
+        .command(&["list", "--cwd", "."])
+        .current_dir(&here)
+        .output()
+        .unwrap();
+    assert!(stdout(&out).starts_with("in "), "{}", stdout(&out));
+    assert_eq!(stdout(&out).lines().count(), 1);
+}
+
+#[test]
+fn list_rejects_an_age_it_cannot_read() {
+    let env = filtered_env("list-bad-since");
+    let out = env.run(&["list", "--since", "soon"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("--since"), "{}", stderr(&out));
+    assert!(stdout(&out).is_empty());
+}
+
+#[test]
+fn list_json_prints_the_public_view_of_the_matching_sessions() {
+    let env = filtered_env("list-json");
+    let out = env.run(&["list", "--json", "--ticket", "ABC-1"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let list: Value = serde_json::from_str(&stdout(&out)).expect("stdout is one JSON value");
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    let s = &list[0];
+    assert_eq!(s["id"], "new");
+    assert_eq!(s["title"], "Fix login");
+    assert_eq!(s["title_source"], "own");
+    assert_eq!(s["branch"], "feat/login");
+    assert_eq!(s["tickets"], json!(["ABC-1"]));
+    assert_eq!(s["tags"], json!(["auth"]));
+    assert!(s["note"].is_null() && s["pr_url"].is_null());
+    assert_eq!(s["agent"], "claude-code");
+    assert!(s["updated_at"].as_str().unwrap().contains('T'));
+
+    // Nothing matching is an empty array, not an error and not empty output.
+    let none = env.run(&["list", "--json", "--tag", "nope"]);
+    assert_eq!(
+        serde_json::from_str::<Value>(&stdout(&none)).unwrap(),
+        json!([])
+    );
+}
+
 #[test]
 fn list_survives_a_closed_pipe() {
     let env = Env::new("list-pipe");

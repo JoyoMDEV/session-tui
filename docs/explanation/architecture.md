@@ -26,6 +26,7 @@ All of them read and write `sessions.json`. Claude Code's transcripts are only e
 | `store` | The data model and every write to `sessions.json`: lock, atomic replace, recovery from a corrupt file | Read transcripts or draw anything |
 | `transcript` | Reading Claude Code's transcripts: import, generated title, branch, pull request, preview text | Write transcripts, or fail on a record it doesn't understand |
 | `tags`, `tickets` | The rules for topic tags and ticket keys: spelling, editing, search syntax, migration | Touch the file themselves |
+| `query` | Choosing sessions for the report commands, and the JSON view scripts read | Print or change anything |
 | `hook` | The answer to `SessionStart` | Print anything but one JSON object on stdout |
 | `commands/` | One small command each, working on parsed arguments | Parse the command line |
 | `cli` | The clap definition of all commands | Decide what a command does |
