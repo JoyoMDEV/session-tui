@@ -66,6 +66,13 @@ pub fn reconcile(existing: &[String], text: &str) -> Vec<String> {
     out
 }
 
+/// Whether the session has every given tag, however each is spelled. An empty filter matches all.
+pub fn has_all(session: &Session, filters: &[String]) -> bool {
+    filters
+        .iter()
+        .all(|f| session.tags.iter().any(|t| same(t, f)))
+}
+
 /// The words in `text` that look like ticket keys (`ABC-123`) and aren't among the `existing`
 /// tags. Old files may hold such a tag, and saving the editor untouched must not trip over it.
 pub fn new_ticket_keys<'a>(existing: &[String], text: &'a str) -> Vec<&'a str> {

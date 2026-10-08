@@ -6,6 +6,7 @@ mod cli;
 mod commands;
 mod doctor;
 mod hook;
+mod query;
 mod setup;
 mod store;
 mod tags;
@@ -33,6 +34,20 @@ pub fn run() -> Result<()> {
         Some(Cmd::Import) => import::run(),
         Some(Cmd::Prune { yes }) => prune::run(yes),
         Some(Cmd::Rm { id }) => rm::run(id),
-        Some(Cmd::List { tickets }) => list::run(tickets),
+        Some(Cmd::List {
+            tickets,
+            tags,
+            branch,
+            cwd,
+            since,
+            json,
+        }) => list::run(list::Options {
+            tickets,
+            tags,
+            branch,
+            cwd,
+            since,
+            json,
+        }),
     }
 }

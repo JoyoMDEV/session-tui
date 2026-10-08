@@ -68,10 +68,25 @@ pub enum Cmd {
     },
     /// Remove a session
     Rm { id: String },
-    /// Print all sessions
+    /// Print sessions, all or only those that match every filter
     List {
         /// Only sessions with this ticket (repeatable: all of them must match)
         #[arg(long = "ticket", value_name = "KEY")]
         tickets: Vec<String>,
+        /// Only sessions with this tag, spelled exactly (repeatable: all of them must match)
+        #[arg(long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
+        /// Only sessions that last saw this git branch
+        #[arg(long, value_name = "NAME")]
+        branch: Option<String>,
+        /// Only sessions started in this directory or below it
+        #[arg(long, value_name = "PATH")]
+        cwd: Option<String>,
+        /// Only sessions updated within this time: a number and m, h, d or w, such as 7d
+        #[arg(long, value_name = "AGE")]
+        since: Option<String>,
+        /// Print a JSON array (see docs/reference/list-json.md) instead of one line per session
+        #[arg(long)]
+        json: bool,
     },
 }

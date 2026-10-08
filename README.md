@@ -122,9 +122,23 @@ The agent calls these, but you can too.
 | `sessions import` | Register transcripts that aren't known yet |
 | `sessions prune [--yes]` | Remove entries whose transcript is gone (dry run without `--yes`) |
 | `sessions rm <id>` | Remove an entry |
-| `sessions list [--ticket KEY]...` | Print all entries, or only those with every given ticket |
+| `sessions list [filters] [--json]` | Print all entries, or only those that match every filter. See [Filtering `list`](#filtering-list) |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
+
+#### Filtering `list`
+
+All filters must match. Tags, tickets and branches are compared exactly, not fuzzily, so `--ticket ABC-1` does not find `ABC-12`. Tags and tickets ignore case.
+
+| Filter | Keeps |
+| --- | --- |
+| `--ticket KEY` | Sessions with that ticket (repeat it to require several) |
+| `--tag TAG` | Sessions with that tag (repeat it to require several) |
+| `--branch NAME` | Sessions whose last git branch is `NAME` |
+| `--cwd PATH` | Sessions started in `PATH` or below it. A relative path is taken from the current directory |
+| `--since AGE` | Sessions updated within `AGE`: a number and `m`, `h`, `d` or `w`, such as `7d` |
+
+`--json` prints a JSON array for scripts instead of one line per session, for example `sessions list --tag auth --since 2w --json | jq '.[].title'`. The keys are described in [`list --json`](docs/reference/list-json.md).
 
 ### Tags
 
