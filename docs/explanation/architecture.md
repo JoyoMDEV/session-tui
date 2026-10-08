@@ -13,7 +13,7 @@ the terminal browser.
 There are three ways in, and they share the same data:
 
 * **The hook** runs at every Claude Code session start and registers the session.
-* **The commands** (`title`, `tag`, `ticket`, `note`, `list`, `prune`, `rm`, `import`,
+* **The commands** (`title`, `tag`, `ticket`, `note`, `list`, `log`, `prune`, `rm`, `import`,
   `migrate-tickets`) are called by the agent, by you, or from scripts.
 * **The browser** lists, searches and edits the same sessions and resumes one.
 
