@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::{
     fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
 
@@ -539,6 +539,130 @@ fn log_rejects_an_age_it_cannot_read() {
     let out = env.run(&["log", "--since", "soon"]);
     assert!(!out.status.success());
     assert!(stderr(&out).contains("--since"), "{}", stderr(&out));
+}
+
+/// Sessions whose directories exist, a transcript for the first two, and a fake `claude` on the
+/// PATH that records its working directory and arguments in `<dir>/launched`.
+fn resumable_env(name: &str) -> (Env, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let env = Env::new(name);
+    let (app, other) = (env.dir.join("app"), env.dir.join("other"));
+    fs::create_dir_all(&app).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    let (app, other) = (app.canonicalize().unwrap(), other.canonicalize().unwrap());
+    env.write_sessions(json!([
+        {"id": "login", "cwd": app.display().to_string(), "title": "Fix login", "tickets": ["ABC-1"], "tags": ["auth"],
+         "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"},
+        {"id": "logout", "cwd": app.display().to_string(), "title": "Fix logout", "tickets": ["ABC-2"], "tags": ["auth"],
+         "created_at": "2026-10-02T00:00:00Z", "updated_at": "2026-10-02T00:00:00Z"},
+        {"id": "gone", "cwd": other.display().to_string(), "title": "Old work", "tickets": ["ABC-3"],
+         "created_at": "2026-10-03T00:00:00Z", "updated_at": "2026-10-03T00:00:00Z"},
+    ]));
+    let projects = env.claude_dir().join("projects").join("-app");
+    fs::create_dir_all(&projects).unwrap();
+    for id in ["login", "logout"] {
+        fs::write(projects.join(format!("{id}.jsonl")), "").unwrap();
+    }
+    let bin = env.dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("claude");
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n{{ pwd; for a in \"$@\"; do echo \"$a\"; done; }} > '{}'\n",
+            env.dir.join("launched").display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    (env, bin)
+}
+
+fn resume(env: &Env, bin: &Path, args: &[&str]) -> Output {
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let mut all = vec!["resume"];
+    all.extend_from_slice(args);
+    env.command(&all).env("PATH", path).output().unwrap()
+}
+
+fn launched(env: &Env) -> Option<Vec<String>> {
+    fs::read_to_string(env.dir.join("launched"))
+        .ok()
+        .map(|t| t.lines().map(String::from).collect())
+}
+
+#[test]
+fn resume_starts_claude_in_the_directory_of_the_one_matching_session() {
+    let (env, bin) = resumable_env("resume-one");
+    let out = resume(&env, &bin, &["ticket:ABC-2"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let run = launched(&env).expect("claude was started");
+    assert!(run[0].ends_with("/app"), "{run:?}");
+    assert_eq!(run[1..], ["--resume", "logout"]);
+}
+
+#[test]
+fn resume_takes_the_filters_of_list_and_passes_the_saved_flags_on() {
+    let (env, bin) = resumable_env("resume-filters");
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let out = env
+        .command(&["resume", "--tag", "auth", "--ticket", "ABC-1"])
+        .env("PATH", path)
+        .env("SESSIONS_CLAUDE_ARGS", "--model sonnet")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        launched(&env).unwrap()[1..],
+        ["--resume", "login", "--model", "sonnet"]
+    );
+}
+
+#[test]
+fn resume_refuses_to_choose_between_several_matches() {
+    let (env, bin) = resumable_env("resume-many");
+    let out = resume(&env, &bin, &["--tag", "auth"]);
+    assert!(!out.status.success());
+    let message = stderr(&out);
+    assert!(
+        message.contains("2 sessions match, so none was resumed"),
+        "{message}"
+    );
+    assert!(
+        message.contains("login") && message.contains("logout"),
+        "{message}"
+    );
+    assert!(launched(&env).is_none(), "nothing may be started");
+}
+
+#[test]
+fn resume_reports_no_match_and_a_missing_transcript() {
+    let (env, bin) = resumable_env("resume-none");
+    let none = resume(&env, &bin, &["ticket:NOPE-1"]);
+    assert!(!none.status.success());
+    assert!(stderr(&none).contains("no session matches"));
+
+    let gone = resume(&env, &bin, &["--ticket", "ABC-3"]);
+    assert!(!gone.status.success());
+    assert!(
+        stderr(&gone).contains("transcript of gone is gone"),
+        "{}",
+        stderr(&gone)
+    );
+    assert!(launched(&env).is_none());
+}
+
+#[test]
+fn resume_list_shows_the_matches_without_starting_anything() {
+    let (env, bin) = resumable_env("resume-list");
+    let out = resume(&env, &bin, &["--list", "--tag", "auth"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ids: Vec<_> = stdout(&out)
+        .lines()
+        .map(|l| l.split_whitespace().next().unwrap().to_string())
+        .collect();
+    assert_eq!(ids, ["logout", "login"], "most recent first");
+    assert!(launched(&env).is_none());
 }
 
 #[test]

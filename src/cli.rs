@@ -84,6 +84,17 @@ pub enum Cmd {
         #[arg(long)]
         markdown: bool,
     },
+    /// Resume the session a query points to, without opening the browser
+    Resume {
+        /// Words to search for, like the browser's search box (`ticket:ABC-123` is exact)
+        #[arg(value_name = "QUERY")]
+        query: Vec<String>,
+        #[command(flatten)]
+        filters: FilterArgs,
+        /// Show the matching sessions instead of resuming one
+        #[arg(long)]
+        list: bool,
+    },
 }
 
 /// The filters shared by the commands that select sessions. All of them must match.
