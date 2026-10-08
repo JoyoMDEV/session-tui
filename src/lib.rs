@@ -17,7 +17,7 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Cmd};
-use commands::{edit, import, list, migrate_tickets, prune, rm};
+use commands::{edit, import, list, log, migrate_tickets, prune, rm};
 
 /// Parses the command line and runs the command; with none given, starts the browser.
 pub fn run() -> Result<()> {
@@ -34,20 +34,7 @@ pub fn run() -> Result<()> {
         Some(Cmd::Import) => import::run(),
         Some(Cmd::Prune { yes }) => prune::run(yes),
         Some(Cmd::Rm { id }) => rm::run(id),
-        Some(Cmd::List {
-            tickets,
-            tags,
-            branch,
-            cwd,
-            since,
-            json,
-        }) => list::run(list::Options {
-            tickets,
-            tags,
-            branch,
-            cwd,
-            since,
-            json,
-        }),
+        Some(Cmd::List { filters, json }) => list::run(filters, json),
+        Some(Cmd::Log { filters, markdown }) => log::run(filters, markdown),
     }
 }

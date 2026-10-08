@@ -1,38 +1,17 @@
 //! `list`: print sessions, one line each or as JSON, optionally filtered.
 
-use crate::query::{self, Filters};
-use crate::store;
+use crate::cli::FilterArgs;
+use crate::{commands, query, store};
 use anyhow::Result;
-use chrono::Utc;
 use std::io::Write;
 
-/// The arguments of `list`, as typed.
-pub struct Options {
-    pub tickets: Vec<String>,
-    pub tags: Vec<String>,
-    pub branch: Option<String>,
-    pub cwd: Option<String>,
-    pub since: Option<String>,
-    pub json: bool,
-}
-
-pub fn run(opts: Options) -> Result<()> {
-    let filters = Filters {
-        tickets: opts.tickets,
-        tags: opts.tags,
-        branch: opts.branch,
-        cwd: opts.cwd.as_deref().map(query::absolute_dir).transpose()?,
-        since: opts
-            .since
-            .as_deref()
-            .map(|s| query::parse_since(s, Utc::now()))
-            .transpose()?,
-    };
+pub fn run(args: FilterArgs, json: bool) -> Result<()> {
+    let filters = commands::filters(args)?;
     let sessions = store::load()?;
     let chosen: Vec<_> = sessions.iter().filter(|s| filters.matches(s)).collect();
 
     let mut out = std::io::stdout().lock();
-    if opts.json {
+    if json {
         let views: Vec<_> = chosen.iter().map(|s| query::view(s)).collect();
         // A closed pipe is not an error worth reporting, as for the text output below.
         let _ = writeln!(out, "{}", serde_json::to_string_pretty(&views)?);

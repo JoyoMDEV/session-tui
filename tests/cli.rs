@@ -491,6 +491,57 @@ fn list_json_prints_the_public_view_of_the_matching_sessions() {
 }
 
 #[test]
+fn log_prints_a_timeline_oldest_first_and_takes_the_list_filters() {
+    let env = Env::new("log");
+    env.write_sessions(json!([
+        {"id": "b", "cwd": "/work/app", "title": "Add rate limit", "tickets": ["ABC-1"],
+         "branch": "feat/limit", "created_at": "2026-10-08T09:00:00Z", "updated_at": "2026-10-08T10:00:00Z"},
+        {"id": "a", "cwd": "/work/app", "title": "Fix login", "tickets": ["ABC-1"],
+         "branch": "feat/login", "pr_url": "https://github.com/o/r/pull/558",
+         "created_at": "2026-10-06T09:00:00Z", "updated_at": "2026-10-06T10:00:00Z"},
+        {"id": "c", "cwd": "/work/other",
+         "created_at": "2026-10-07T09:00:00Z", "updated_at": "2026-10-07T10:00:00Z"},
+    ]));
+    let out = env.run(&["log"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        stdout(&out),
+        "2026-10-06  Fix login  feat/login  PR #558  /work/app\n\
+         2026-10-07  (untitled)  /work/other\n\
+         2026-10-08  Add rate limit  feat/limit  /work/app\n"
+    );
+
+    let ticket = stdout(&env.run(&["log", "--ticket", "ABC-1"]));
+    assert_eq!(ticket.lines().count(), 2);
+    assert!(ticket.starts_with("2026-10-06"));
+    assert!(stdout(&env.run(&["log", "--tag", "nope"])).is_empty());
+}
+
+#[test]
+fn log_markdown_links_the_pull_request_and_escapes_the_title() {
+    let env = Env::new("log-markdown");
+    env.write_sessions(json!([
+        {"id": "a", "cwd": "/work/app", "title": "Fix *login*", "branch": "feat/login",
+         "pr_url": "https://github.com/o/r/pull/558",
+         "created_at": "2026-10-06T09:00:00Z", "updated_at": "2026-10-06T10:00:00Z"},
+    ]));
+    let out = env.run(&["log", "--markdown"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        stdout(&out),
+        "- **2026-10-06** Fix \\*login\\* (`feat/login`, [PR #558](https://github.com/o/r/pull/558), `/work/app`)\n"
+    );
+}
+
+#[test]
+fn log_rejects_an_age_it_cannot_read() {
+    let env = Env::new("log-bad-since");
+    let out = env.run(&["log", "--since", "soon"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("--since"), "{}", stderr(&out));
+}
+
+#[test]
 fn list_survives_a_closed_pipe() {
     let env = Env::new("list-pipe");
     for i in 0..200 {

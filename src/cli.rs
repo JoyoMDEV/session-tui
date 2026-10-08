@@ -1,7 +1,7 @@
 //! The command line, defined with clap. This file only describes the commands; what each one does
 //! is in `commands/`, `hook.rs`, `setup.rs`, `doctor.rs` and `tui.rs`.
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(version, about = "Browse and resume saved Claude Code sessions")]
@@ -70,23 +70,38 @@ pub enum Cmd {
     Rm { id: String },
     /// Print sessions, all or only those that match every filter
     List {
-        /// Only sessions with this ticket (repeatable: all of them must match)
-        #[arg(long = "ticket", value_name = "KEY")]
-        tickets: Vec<String>,
-        /// Only sessions with this tag, spelled exactly (repeatable: all of them must match)
-        #[arg(long = "tag", value_name = "TAG")]
-        tags: Vec<String>,
-        /// Only sessions that last saw this git branch
-        #[arg(long, value_name = "NAME")]
-        branch: Option<String>,
-        /// Only sessions started in this directory or below it
-        #[arg(long, value_name = "PATH")]
-        cwd: Option<String>,
-        /// Only sessions updated within this time: a number and m, h, d or w, such as 7d
-        #[arg(long, value_name = "AGE")]
-        since: Option<String>,
+        #[command(flatten)]
+        filters: FilterArgs,
         /// Print a JSON array (see docs/reference/list-json.md) instead of one line per session
         #[arg(long)]
         json: bool,
     },
+    /// Print a timeline of sessions, oldest first, for a status update or a ticket
+    Log {
+        #[command(flatten)]
+        filters: FilterArgs,
+        /// Print a Markdown list to paste into a ticket or a report
+        #[arg(long)]
+        markdown: bool,
+    },
+}
+
+/// The filters shared by the commands that select sessions. All of them must match.
+#[derive(Args)]
+pub struct FilterArgs {
+    /// Only sessions with this ticket (repeatable: all of them must match)
+    #[arg(long = "ticket", value_name = "KEY")]
+    pub tickets: Vec<String>,
+    /// Only sessions with this tag, spelled exactly (repeatable: all of them must match)
+    #[arg(long = "tag", value_name = "TAG")]
+    pub tags: Vec<String>,
+    /// Only sessions that last saw this git branch
+    #[arg(long, value_name = "NAME")]
+    pub branch: Option<String>,
+    /// Only sessions started in this directory or below it
+    #[arg(long, value_name = "PATH")]
+    pub cwd: Option<String>,
+    /// Only sessions updated within this time: a number and m, h, d or w, such as 7d
+    #[arg(long, value_name = "AGE")]
+    pub since: Option<String>,
 }

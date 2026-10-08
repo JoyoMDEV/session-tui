@@ -16,8 +16,8 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/main.rs`, `src/lib.rs` | `main.rs` calls `sessions::run()`; `lib.rs` parses the command line and dispatches |
 | `src/cli.rs` | The clap definition of every command |
 | `src/hook.rs` | The `SessionStart` hook |
-| `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `prune`, `rm`, `import`, `migrate-tickets` |
-| `src/query.rs` | Which sessions the report commands keep (`list` filters) and the public JSON view |
+| `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `log`, `prune`, `rm`, `import`, `migrate-tickets` |
+| `src/query.rs` | Which sessions the report commands keep (the `list` and `log` filters) and the public JSON view |
 | `src/store.rs` | `sessions.json`: data model, locking, atomic writes, recovery from a corrupt file |
 | `src/transcript.rs` | Read-only access to Claude Code transcripts: import, title/branch/PR scan, preview text |
 | `src/tui.rs`, `src/tui/` | The ratatui browser: `app.rs` state and edits, `input.rs` keys and mouse, `draw.rs` rendering; `tui.rs` starts it and launches `claude` |

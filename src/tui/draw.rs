@@ -1,6 +1,7 @@
 //! Drawing: turns an `App` into ratatui widgets. Nothing here changes what is stored.
 
 use super::app::{App, Mode, TitleKind, shown_title};
+use crate::query::pr_label;
 use crate::{tickets, transcript};
 use ratatui::{
     Frame,
@@ -235,14 +236,6 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-/// `#558` for a GitHub-style pull request URL, otherwise the URL itself.
-fn pr_label(url: &str) -> String {
-    match url.trim_end_matches('/').rsplit('/').next() {
-        Some(n) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => format!("#{n}"),
-        _ => url.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::app::app_with;
@@ -295,14 +288,9 @@ mod tests {
     }
 
     #[test]
-    fn human_size_and_pr_label() {
+    fn human_size_is_rounded_to_the_largest_unit() {
         assert_eq!(human_size(12), "12 B");
         assert_eq!(human_size(1536), "1.5 KB");
         assert_eq!(human_size(5 * 1024 * 1024), "5.0 MB");
-        assert_eq!(pr_label("https://github.com/o/r/pull/558"), "#558");
-        assert_eq!(
-            pr_label("https://example.test/merge/abc"),
-            "https://example.test/merge/abc"
-        );
     }
 }

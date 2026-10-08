@@ -1,5 +1,5 @@
-//! Choosing sessions for the commands that report on them: the filters of `list` and the JSON view
-//! scripts read. It selects and describes sessions; it does not print or change anything.
+//! Choosing sessions for the commands that report on them: the filters of `list` and `log`, and the
+//! JSON view scripts read. It selects and describes sessions; it does not print or change anything.
 
 use crate::store::Session;
 use crate::{tags, tickets};
@@ -133,6 +133,14 @@ pub fn view(s: &Session) -> View<'_> {
     }
 }
 
+/// `#558` for a GitHub-style pull request URL, otherwise the URL itself.
+pub fn pr_label(url: &str) -> String {
+    match url.trim_end_matches('/').rsplit('/').next() {
+        Some(n) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => format!("#{n}"),
+        _ => url.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +241,16 @@ mod tests {
         assert_eq!(display_title(&s), Some((TitleSource::Claude, "generated")));
         s.title = Some("mine".into());
         assert_eq!(display_title(&s), Some((TitleSource::Own, "mine")));
+    }
+
+    #[test]
+    fn pr_label_is_the_number_for_a_pull_request_url_and_the_url_otherwise() {
+        assert_eq!(pr_label("https://github.com/o/r/pull/558"), "#558");
+        assert_eq!(pr_label("https://github.com/o/r/pull/558/"), "#558");
+        assert_eq!(
+            pr_label("https://example.test/merge/abc"),
+            "https://example.test/merge/abc"
+        );
     }
 
     #[test]
