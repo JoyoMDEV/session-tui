@@ -1,10 +1,11 @@
-//! Choosing sessions for the commands that report on them: the filters of `list` and `log`, and the
-//! JSON view scripts read. It selects and describes sessions; it does not print or change anything.
+//! Choosing sessions for the commands that report on them: the filters of `list`, `log` and `resume`,
+//! the search of the browser's search box, and the JSON view scripts read. It selects and describes sessions; it does not print or change anything.
 
 use crate::store::Session;
 use crate::{tags, tickets};
 use anyhow::{Result, bail};
 use chrono::{DateTime, Duration, Utc};
+use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use serde::Serialize;
 use std::path::Path;
 
@@ -90,6 +91,47 @@ pub fn display_title(s: &Session) -> Option<(TitleSource, &str)> {
         (None, Some(t), _) => Some((TitleSource::Claude, t)),
         (None, None, Some(t)) => Some((TitleSource::Prompt, t)),
         _ => None,
+    }
+}
+
+/// The search of the browser's search box: free text matched fuzzily against a session's title,
+/// directory, tickets, tags, note, branch and pull request, plus exact `ticket:KEY` words.
+pub struct Searcher {
+    matcher: SkimMatcherV2,
+    free_text: String,
+    tickets: Vec<String>,
+}
+
+impl Searcher {
+    pub fn new(query: &str) -> Searcher {
+        let (free_text, tickets) = tickets::parse_query(query);
+        Searcher {
+            matcher: SkimMatcherV2::default(),
+            free_text,
+            tickets,
+        }
+    }
+
+    /// How well the session matches, higher is better, or `None` if it does not match. Without
+    /// free text every session that has the asked tickets matches with a score of 0.
+    pub fn score(&self, s: &Session) -> Option<i64> {
+        if !tickets::has_all(s, &self.tickets) {
+            return None;
+        }
+        if self.free_text.is_empty() {
+            return Some(0);
+        }
+        let hay = format!(
+            "{} {} {} {} {} {} {}",
+            display_title(s).map_or("", |(_, title)| title),
+            s.cwd,
+            s.tickets.join(" "),
+            s.tags.join(" "),
+            s.note.as_deref().unwrap_or(""),
+            s.branch.as_deref().unwrap_or(""),
+            s.pr_url.as_deref().unwrap_or("")
+        );
+        self.matcher.fuzzy_match(&hay, &self.free_text)
     }
 }
 
@@ -251,6 +293,22 @@ mod tests {
             pr_label("https://example.test/merge/abc"),
             "https://example.test/merge/abc"
         );
+    }
+
+    #[test]
+    fn the_search_is_fuzzy_on_text_and_exact_on_tickets() {
+        let mut s = session("a", "/work/app", 1);
+        s.title = Some("Grafana dashboards".into());
+        s.tickets = vec!["ABC-12".into()];
+        s.tags = vec!["observability".into()];
+        assert_eq!(Searcher::new("").score(&s), Some(0));
+        assert!(Searcher::new("grafdash").score(&s).is_some());
+        assert!(Searcher::new("observ").score(&s).is_some());
+        assert!(Searcher::new("zebra").score(&s).is_none());
+        assert!(Searcher::new("ticket:abc-12").score(&s).is_some());
+        assert!(Searcher::new("ticket:ABC-1").score(&s).is_none());
+        assert!(Searcher::new("graf ticket:ABC-12").score(&s).is_some());
+        assert!(Searcher::new("zebra ticket:ABC-12").score(&s).is_none());
     }
 
     #[test]

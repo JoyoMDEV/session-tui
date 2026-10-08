@@ -2,9 +2,10 @@
 //! terminal, which is how it is tested.
 
 use super::Launch;
+use crate::launch::default_args;
+use crate::query::Searcher;
 use crate::store::{self, Session};
 use crate::{tickets, transcript};
-use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use ratatui::widgets::ListState;
 use std::collections::HashSet;
 use std::process::Command;
@@ -87,10 +88,6 @@ pub(super) struct App {
     pub(super) status: String,
 }
 
-pub(super) fn default_args() -> String {
-    std::env::var("SESSIONS_CLAUDE_ARGS").unwrap_or_default()
-}
-
 pub(super) fn in_dir(session_cwd: &str, launch_dir: &str) -> bool {
     let below = |a: &str, b: &str| a == b || a.strip_prefix(b).is_some_and(|r| r.starts_with('/'));
     below(session_cwd, launch_dir) || below(launch_dir, session_cwd)
@@ -99,8 +96,7 @@ pub(super) fn in_dir(session_cwd: &str, launch_dir: &str) -> bool {
 impl App {
     /// Indices into `sessions`, filtered and ordered for display.
     pub(super) fn visible(&self) -> Vec<usize> {
-        let matcher = SkimMatcherV2::default();
-        let (free_text, ticket_filters) = tickets::parse_query(&self.query);
+        let search = Searcher::new(&self.query);
         let mut scored: Vec<(i64, usize)> = self
             .sessions
             .iter()
@@ -112,25 +108,7 @@ impl App {
                     .as_ref()
                     .is_none_or(|b| s.branch.as_ref() == Some(b))
             })
-            .filter(|(_, s)| tickets::has_all(s, &ticket_filters))
-            .filter_map(|(i, s)| {
-                if free_text.is_empty() {
-                    return Some((0, i));
-                }
-                let hay = format!(
-                    "{} {} {} {} {} {} {}",
-                    shown_title(s).1,
-                    s.cwd,
-                    s.tickets.join(" "),
-                    s.tags.join(" "),
-                    s.note.as_deref().unwrap_or(""),
-                    s.branch.as_deref().unwrap_or(""),
-                    s.pr_url.as_deref().unwrap_or("")
-                );
-                matcher
-                    .fuzzy_match(&hay, &free_text)
-                    .map(|score| (score, i))
-            })
+            .filter_map(|(i, s)| search.score(s).map(|score| (score, i)))
             .collect();
         scored.sort_by(|a, b| {
             b.0.cmp(&a.0).then_with(|| {

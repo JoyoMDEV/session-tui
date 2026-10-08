@@ -124,6 +124,7 @@ The agent calls these, but you can too.
 | `sessions rm <id>` | Remove an entry |
 | `sessions list [filters] [--json]` | Print all entries, or only those that match every filter. See [Filtering `list` and `log`](#filtering-list-and-log) |
 | `sessions log [filters] [--markdown]` | Print a timeline of the matching entries, newest first. See [Timeline with `log`](#timeline-with-log) |
+| `sessions resume [query] [filters] [--list]` | Resume the one session a query points to, without the browser. See [Resume from the shell](#resume-from-the-shell) |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
 
@@ -158,6 +159,18 @@ $ sessions log --ticket ABC-123
 ```
 
 Dates are UTC, as in `list`. A title is yours, else the one Claude Code generated, else the start of the first prompt, and `(untitled)` if there is none.
+
+#### Resume from the shell
+
+`sessions resume <query>` resumes a session without opening the browser, in the session's own directory and with the flags from `SESSIONS_CLAUDE_ARGS`, like Enter in the browser. The query is searched like the browser's search box (fuzzy text, and `ticket:ABC-123` exactly), and the filters of `list` narrow it:
+
+```sh
+sessions resume grafana dashboards
+sessions resume --ticket ABC-123 --branch feat/login
+alias cr='sessions resume'
+```
+
+It resumes only when exactly one session matches. If several do, it lists them and exits with an error rather than guessing; if none does, or the transcript is gone, it says so. `--list` prints the matches without resuming, most recent first.
 
 ### Tags
 

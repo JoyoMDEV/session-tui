@@ -6,6 +6,7 @@ mod cli;
 mod commands;
 mod doctor;
 mod hook;
+mod launch;
 mod query;
 mod setup;
 mod store;
@@ -17,7 +18,7 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Cmd};
-use commands::{edit, import, list, log, migrate_tickets, prune, rm};
+use commands::{edit, import, list, log, migrate_tickets, prune, resume, rm};
 
 /// Parses the command line and runs the command; with none given, starts the browser.
 pub fn run() -> Result<()> {
@@ -36,5 +37,10 @@ pub fn run() -> Result<()> {
         Some(Cmd::Rm { id }) => rm::run(id),
         Some(Cmd::List { filters, json }) => list::run(filters, json),
         Some(Cmd::Log { filters, markdown }) => log::run(filters, markdown),
+        Some(Cmd::Resume {
+            query,
+            filters,
+            list,
+        }) => resume::run(query, filters, list),
     }
 }

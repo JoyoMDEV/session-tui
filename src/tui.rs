@@ -7,7 +7,7 @@ mod draw;
 mod input;
 
 use crate::store::{self, Session};
-use crate::transcript;
+use crate::{launch, transcript};
 use anyhow::Result;
 use app::{App, Mode};
 use input::event_loop;
@@ -16,8 +16,6 @@ use ratatui::{
     widgets::ListState,
 };
 use std::collections::HashSet;
-use std::os::unix::process::CommandExt;
-use std::process::Command;
 
 /// What to run after the TUI has closed.
 pub(super) struct Launch {
@@ -66,13 +64,7 @@ pub fn run() -> Result<()> {
 
     if let Some(Launch { session, args }) = result? {
         // Replaces this process; only returns on failure.
-        let err = Command::new("claude")
-            .arg("--resume")
-            .arg(&session.id)
-            .args(&args)
-            .current_dir(&session.cwd)
-            .exec();
-        anyhow::bail!("could not start claude in {}: {err}", session.cwd);
+        return Err(launch::resume(&session, &args));
     }
     Ok(())
 }

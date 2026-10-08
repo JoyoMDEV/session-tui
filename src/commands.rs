@@ -7,6 +7,7 @@ pub mod list;
 pub mod log;
 pub mod migrate_tickets;
 pub mod prune;
+pub mod resume;
 pub mod rm;
 
 use crate::cli::FilterArgs;

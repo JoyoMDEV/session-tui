@@ -1,6 +1,7 @@
 //! `list`: print sessions, one line each or as JSON, optionally filtered.
 
 use crate::cli::FilterArgs;
+use crate::store::Session;
 use crate::{commands, query, store};
 use anyhow::Result;
 use std::io::Write;
@@ -18,33 +19,36 @@ pub fn run(args: FilterArgs, json: bool) -> Result<()> {
         return Ok(());
     }
     for s in chosen {
-        let tickets = if s.tickets.is_empty() {
-            String::new()
-        } else {
-            format!("  [{}]", s.tickets.join(" "))
-        };
-        let tags = if s.tags.is_empty() {
-            String::new()
-        } else {
-            format!("  #{}", s.tags.join(" #"))
-        };
-        let written = writeln!(
-            out,
-            "{}  {}  {}  {}{}{}",
-            s.id,
-            s.updated_at.format("%Y-%m-%d %H:%M"),
-            s.title
-                .as_deref()
-                .or(s.suggestion.as_deref().map(|_| "(suggested)"))
-                .unwrap_or("-"),
-            s.cwd,
-            tickets,
-            tags
-        );
         // `println!` panics on a closed pipe, e.g. `sessions list | head`.
-        if written.is_err() {
+        if writeln!(out, "{}", text_line(s)).is_err() {
             break;
         }
     }
     Ok(())
+}
+
+/// `<id>  <updated>  <title>  <directory>  [tickets]  #tags`, the line `list` prints.
+pub fn text_line(s: &Session) -> String {
+    let tickets = if s.tickets.is_empty() {
+        String::new()
+    } else {
+        format!("  [{}]", s.tickets.join(" "))
+    };
+    let tags = if s.tags.is_empty() {
+        String::new()
+    } else {
+        format!("  #{}", s.tags.join(" #"))
+    };
+    format!(
+        "{}  {}  {}  {}{}{}",
+        s.id,
+        s.updated_at.format("%Y-%m-%d %H:%M"),
+        s.title
+            .as_deref()
+            .or(s.suggestion.as_deref().map(|_| "(suggested)"))
+            .unwrap_or("-"),
+        s.cwd,
+        tickets,
+        tags
+    )
 }

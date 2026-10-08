@@ -2,8 +2,9 @@
 //! is done and which session to launch.
 
 use super::Launch;
-use super::app::{App, Field, Mode, default_args};
+use super::app::{App, Field, Mode};
 use super::draw::draw;
+use crate::launch::default_args;
 use crate::store;
 use anyhow::Result;
 use ratatui::{
