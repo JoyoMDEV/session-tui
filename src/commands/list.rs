@@ -1,6 +1,7 @@
 //! `list`: print sessions, one line each or as JSON, optionally filtered.
 
 use crate::cli::FilterArgs;
+use crate::query::TitleSource;
 use crate::store::Session;
 use crate::{commands, query, store};
 use anyhow::Result;
@@ -43,10 +44,12 @@ pub fn text_line(s: &Session) -> String {
         "{}  {}  {}  {}{}{}",
         s.id,
         s.updated_at.format("%Y-%m-%d %H:%M"),
-        s.title
-            .as_deref()
-            .or(s.suggestion.as_deref().map(|_| "(suggested)"))
-            .unwrap_or("-"),
+        // The same title as `log` and `--json`, but a mere snippet of the first prompt is marked.
+        match query::display_title(s) {
+            Some((TitleSource::Prompt, _)) => "(suggested)",
+            Some((_, title)) => title,
+            None => "-",
+        },
         s.cwd,
         tickets,
         tags
