@@ -37,3 +37,18 @@ fn hook_runs_sessions_hook_on_every_session_start_source() {
     // A missing binary must never break session start.
     assert!(command.trim_end().ends_with("exit 0"));
 }
+
+/// The repository root is the plugin root, and Claude Code does not load a `CLAUDE.md` there as
+/// context: `claude plugin validate --strict .` warns about it and so fails. The instructions for
+/// working on the repository are in `AGENTS.md`, which `.claude/CLAUDE.md` imports for versions of
+/// Claude Code that do not read `AGENTS.md` themselves.
+#[test]
+fn there_is_no_claude_md_at_the_plugin_root() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(
+        !root.join("CLAUDE.md").exists(),
+        "move CLAUDE.md to .claude/CLAUDE.md: a CLAUDE.md at the plugin root fails `claude plugin validate --strict`"
+    );
+    let import = fs::read_to_string(root.join(".claude/CLAUDE.md")).expect(".claude/CLAUDE.md");
+    assert_eq!(import.trim(), "@../AGENTS.md");
+}
