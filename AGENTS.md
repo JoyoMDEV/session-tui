@@ -29,6 +29,8 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `tests/plugin.rs` | Keeps the plugin manifests and the hook consistent with the crate |
 | `tests/cli.rs` | Runs the real binary against temporary directories: hook, setup, doctor, edits, list, prune, import |
 | `tests/readme.rs` | Keeps the README command list in step with `sessions --help` |
+| `tests/docs.rs` | Checks that links in the Markdown files resolve and that `docs/Home.md` links every page in `docs/` |
+| `docs/` | `Home.md` (the index), `reference/`, `explanation/`, `how-to/` (maintainer tasks) and `adr/` |
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
@@ -72,9 +74,16 @@ CI runs formatting, clippy and shellcheck on Linux and the tests on Linux and ma
   commands or configuration. `tests/readme.rs` fails if a command from `sessions --help` is missing
   from the README.
 - Put something in `docs/` only when it is too long for the README: a reference (the `sessions.json`
-  format) or an explanation (how the hook works, why transcripts are read tolerantly). Keep the
-  [Diátaxis](https://diataxis.fr) kinds apart: `docs/reference/` and `docs/explanation/`, one kind
-  per page. How-to steps and the tutorial stay in the README. Link every page from the README.
+  format), an explanation (how the hook works, why transcripts are read tolerantly) or a how-to for
+  maintainers. Keep the [Diátaxis](https://diataxis.fr) kinds apart: `docs/reference/`,
+  `docs/explanation/` and `docs/how-to/`, one kind per page. How-tos for users and the tutorial
+  stay in the README; `docs/how-to/` is for tasks only maintainers do, such as making a release.
+- `docs/Home.md` is the index, written by hand and organised by those four kinds. Link every new
+  page from it. A wiki generated from `docs/` on release is planned (#43) and will build its
+  sidebar from `Home.md`.
+  `tests/docs.rs` fails on a broken relative link or heading anchor and on a page that `Home.md`
+  does not link. Write links between pages as relative Markdown links, and link the README for the
+  tutorial and user how-tos.
 - Record a decision that is costly to reverse as an ADR in `docs/adr/`, numbered `NNNN-title.md`,
   in the [MADR](https://adr.github.io/madr/) format. Don't edit an accepted ADR; supersede it with a
   new one.
