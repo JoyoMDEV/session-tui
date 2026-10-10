@@ -1,5 +1,6 @@
 //! `sessions setup`: registers the SessionStart hook in Claude Code's `settings.json`.
 
+use crate::output::say;
 use crate::store;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
@@ -38,8 +39,13 @@ pub struct Options<'a> {
     pub force: bool,
 }
 
-pub fn settings_path() -> PathBuf {
-    store::claude_dir().join("settings.json")
+pub fn settings_path() -> Result<PathBuf> {
+    Ok(settings_path_in(&store::claude_dir()?))
+}
+
+/// Claude Code's `settings.json` in the config directory `dir`.
+pub fn settings_path_in(dir: &Path) -> PathBuf {
+    dir.join("settings.json")
 }
 
 /// The shell command Claude Code runs; the path is absolute because the hook's PATH is minimal.
@@ -247,7 +253,7 @@ pub fn setup_at(path: &Path, command: &str, opts: &Options) -> Result<Outcome> {
 }
 
 pub fn run(force: bool) -> Result<()> {
-    let path = settings_path();
+    let path = settings_path()?;
     let command = hook_command(&std::env::current_exe()?);
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -260,25 +266,25 @@ pub fn run(force: bool) -> Result<()> {
     };
     match setup_at(&path, &command, &opts)? {
         Outcome::Added => {
-            println!("Added the SessionStart hook to {}", path.display());
-            println!("It takes effect in new Claude Code sessions.");
-            println!("Run `sessions import` to add sessions from before the hook existed.");
+            say!("Added the SessionStart hook to {}", path.display());
+            say!("It takes effect in new Claude Code sessions.");
+            say!("Run `sessions import` to add sessions from before the hook existed.");
         }
         Outcome::Repaired { from } => {
-            println!("Updated the hook in {}:", path.display());
-            println!("  {from}");
-            println!("  -> {command}");
-            println!("It takes effect in new Claude Code sessions.");
+            say!("Updated the hook in {}:", path.display());
+            say!("  {from}");
+            say!("  -> {command}");
+            say!("It takes effect in new Claude Code sessions.");
         }
-        Outcome::AlreadyPresent => println!("The hook is already configured in {}", path.display()),
+        Outcome::AlreadyPresent => {
+            say!("The hook is already configured in {}", path.display());
+        }
         Outcome::OtherInstall { command: other } => {
-            println!("The hook runs another sessions binary, which works: {other}");
-            println!(
-                "It was left alone. To use this binary instead, run `sessions setup --force`."
-            );
+            say!("The hook runs another sessions binary, which works: {other}");
+            say!("It was left alone. To use this binary instead, run `sessions setup --force`.");
         }
         Outcome::PluginInstalled => {
-            println!("The sessions plugin is enabled and ships the hook, so nothing was changed.")
+            say!("The sessions plugin is enabled and ships the hook, so nothing was changed.");
         }
     }
     Ok(())

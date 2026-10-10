@@ -2,6 +2,7 @@
 //! quiet: stdout is exactly one JSON object, diagnostics go to stderr, and there is no network
 //! access and no scan of whole transcripts.
 
+use crate::output::say;
 use crate::preset::Preset;
 use crate::store::Session;
 use crate::{store, tags, tickets, transcript};
@@ -29,7 +30,8 @@ pub fn run() -> Result<()> {
 
     let preset = Preset::from_env();
 
-    let view = store::update(|sessions| {
+    // A session must start even if it cannot be registered, so a failure here is only reported.
+    let view = match store::update(|sessions| {
         let is_new = !sessions.iter().any(|s| s.id == h.session_id);
         store::upsert(sessions, &h.session_id, &h.cwd);
         let mut started_for = Vec::new();
@@ -48,8 +50,13 @@ pub fn run() -> Result<()> {
             // Set SESSIONS_RESUME_REMINDER=0 to turn the reminder off.
             remind_on_resume: std::env::var("SESSIONS_RESUME_REMINDER").as_deref() != Ok("0"),
         })
-    })?
-    .unwrap_or_default();
+    }) {
+        Ok(view) => view.unwrap_or_default(),
+        Err(e) => {
+            eprintln!("sessions: could not register the session: {e:#}");
+            HookView::default()
+        }
+    };
 
     // The agent's shell may not have our install dir on PATH, so use the absolute path.
     let exe = std::env::current_exe()?;
@@ -57,15 +64,23 @@ pub fn run() -> Result<()> {
 
     // Make the id (and the binary) available to the agent's later Bash calls.
     if let Some(env_file) = std::env::var_os("CLAUDE_ENV_FILE") {
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(env_file)?;
-        writeln!(f, "export CLAUDE_SESSION_ID={}", h.session_id)?;
-        writeln!(f, "export PATH=\"{}:$PATH\"", exe_dir.display())?;
+        let write = || -> std::io::Result<()> {
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&env_file)?;
+            writeln!(f, "export CLAUDE_SESSION_ID={}", h.session_id)?;
+            writeln!(f, "export PATH=\"{}:$PATH\"", exe_dir.display())
+        };
+        if let Err(e) = write() {
+            eprintln!(
+                "sessions: could not write {}: {e}",
+                env_file.to_string_lossy()
+            );
+        }
     }
 
-    println!("{}", hook_output(&h, &view, &exe));
+    say!("{}", hook_output(&h, &view, &exe));
     Ok(())
 }
 

@@ -1,5 +1,6 @@
 //! `sessions doctor`: checks that everything the tool relies on is in place.
 
+use crate::output::text;
 use crate::setup::{self, canonical, find_in_path};
 use crate::{store, transcript};
 use anyhow::Result;
@@ -212,7 +213,10 @@ fn hook_check(
 }
 
 fn sessions_checks(existing: &HashSet<String>) -> Vec<Check> {
-    let path = store::path();
+    let path = match store::path() {
+        Ok(path) => path,
+        Err(e) => return vec![fail("sessions", format!("{e:#}"))],
+    };
     if !path.exists() {
         return vec![ok(
             "sessions",
@@ -376,10 +380,20 @@ pub fn gather() -> Vec<Check> {
         .unwrap_or_default();
     let path_var = std::env::var_os("PATH").unwrap_or_default();
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("sessions"));
-    let settings_path = setup::settings_path();
-    let settings = load_settings(&settings_path);
-
     let mut checks = binary_checks(&exe, &path_var);
+    // Everything else lives in Claude Code's config directory, which may not be findable.
+    let claude_dir = match store::claude_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            checks.push(
+                fail("config", format!("{e:#}"))
+                    .hint("set HOME, or CLAUDE_CONFIG_DIR to Claude Code's config directory"),
+            );
+            return checks;
+        }
+    };
+    let settings_path = setup::settings_path_in(&claude_dir);
+    let settings = load_settings(&settings_path);
     checks.push(hook_check(
         &settings,
         &settings_path,
@@ -393,7 +407,7 @@ pub fn gather() -> Vec<Check> {
     checks.extend(transcript_checks(
         total,
         &samples,
-        &store::claude_dir().join("projects"),
+        &claude_dir.join("projects"),
     ));
     checks.extend(retention_checks(&settings));
     checks
@@ -429,13 +443,11 @@ pub fn render(checks: &[Check]) -> String {
     out
 }
 
-pub fn run() -> Result<()> {
+/// Prints the report. `false` if a check failed, which `sessions doctor` reports as exit status 1.
+pub fn run() -> Result<bool> {
     let checks = gather();
-    print!("{}", render(&checks));
-    if checks.iter().any(|c| c.level == Level::Fail) {
-        std::process::exit(1);
-    }
-    Ok(())
+    text(&render(&checks));
+    Ok(!checks.iter().any(|c| c.level == Level::Fail))
 }
 
 #[cfg(test)]

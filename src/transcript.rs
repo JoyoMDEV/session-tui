@@ -24,7 +24,11 @@ pub struct Info {
 }
 
 fn project_dirs() -> Vec<PathBuf> {
-    fs::read_dir(store::claude_dir().join("projects"))
+    // Without a config dir there are no transcripts to find, which is less information, not an error.
+    let Ok(claude_dir) = store::claude_dir() else {
+        return Vec::new();
+    };
+    fs::read_dir(claude_dir.join("projects"))
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .map(|e| e.path())

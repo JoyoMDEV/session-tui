@@ -795,15 +795,164 @@ fn list_survives_a_closed_pipe() {
     for i in 0..200 {
         env.register(&format!("s{i}"), "/w");
     }
-    let mut child = env
-        .command(&["list"])
+    let out = run_with_closed_stdout(env.command(&["list"]));
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(!stderr(&out).contains("panicked"), "{}", stderr(&out));
+}
+
+/// Runs `cmd` with stdout connected to a pipe whose reader is already gone, so that every write
+/// fails the way it does for `sessions … | head` once `head` has what it wanted. The pipe is closed
+/// before the program starts, so the result does not depend on timing.
+fn run_with_closed_stdout(mut cmd: Command) -> Output {
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    cmd.stdout(writer)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap()
+}
+
+fn assert_no_panic(what: &str, out: &Output) {
+    assert!(!stderr(out).contains("panicked"), "{what}: {}", stderr(out));
+    assert_ne!(out.status.code(), Some(101), "{what}: {}", stderr(out));
+}
+
+#[test]
+fn prune_and_migrate_tickets_end_quietly_on_a_closed_pipe_and_still_do_their_work() {
+    let env = Env::new("closed-pipe-work");
+    // Fresh enough not to count as an orphan: prune spares what was touched in the last hour.
+    let now = chrono::Utc::now().to_rfc3339();
+    env.write_sessions(json!([
+        {"id": "o1", "cwd": "/w", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
+        {"id": "o2", "cwd": "/w", "created_at": "2026-01-02T00:00:00Z", "updated_at": "2026-01-02T00:00:00Z"},
+        {"id": "k1", "cwd": "/w", "tags": ["ABC-1"], "created_at": now, "updated_at": now},
+    ]));
+    // The dry runs only print, so a closed pipe ends them without a panic.
+    for args in [&["prune"][..], &["migrate-tickets"]] {
+        let out = run_with_closed_stdout(env.command(args));
+        assert_no_panic(&args.join(" "), &out);
+        assert!(out.status.success(), "{args:?}: {}", stderr(&out));
+    }
+    assert_eq!(env.sessions().len(), 3, "a dry run changes nothing");
+
+    // What was asked for is done even though nobody reads the output.
+    let out = run_with_closed_stdout(env.command(&["migrate-tickets", "--yes"]));
+    assert_no_panic("migrate-tickets --yes", &out);
+    assert_eq!(env.session("k1")["tickets"], json!(["ABC-1"]));
+    let out = run_with_closed_stdout(env.command(&["prune", "--yes"]));
+    assert_no_panic("prune --yes", &out);
+    assert_eq!(
+        env.sessions().len(),
+        1,
+        "the orphans are gone, k1 is fresh enough to stay"
+    );
+}
+
+#[test]
+fn doctor_setup_import_and_the_hook_do_not_panic_on_a_closed_pipe() {
+    let env = Env::new("closed-pipe-others");
+    assert_no_panic("doctor", &run_with_closed_stdout(env.command(&["doctor"])));
+    assert_no_panic("import", &run_with_closed_stdout(env.command(&["import"])));
+
+    let setup = run_with_closed_stdout(env.command(&["setup"]));
+    assert_no_panic("setup", &setup);
+    assert!(setup.status.success(), "{}", stderr(&setup));
+    assert!(
+        env.settings_file().exists(),
+        "setup still wrote the settings"
+    );
+
+    let mut cmd = env.command(&["hook"]);
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(writer)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"session_id":"s1","cwd":"/w","source":"startup"}"#)
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_no_panic("hook", &out);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        env.session("s1")["cwd"],
+        "/w",
+        "the session was registered anyway"
+    );
+}
+
+#[test]
+fn nothing_panics_when_home_is_not_set() {
+    let env = Env::new("no-home");
+    let bare = |args: &[&str]| {
+        let mut cmd = env.command(args);
+        cmd.env_remove("HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("SESSIONS_FILE");
+        cmd
+    };
+    for args in [
+        &["list"][..],
+        &["import"],
+        &["prune"],
+        &["setup"],
+        &["title", "--id", "x", "t"],
+    ] {
+        let out = bare(args).output().unwrap();
+        assert_eq!(out.status.code(), Some(1), "{args:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("HOME is not set"),
+            "{args:?}: {}",
+            stderr(&out)
+        );
+        assert!(
+            !stderr(&out).contains("panicked"),
+            "{args:?}: {}",
+            stderr(&out)
+        );
+    }
+
+    // doctor still reports what it can, and says what is missing.
+    let out = bare(&["doctor"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stdout(&out).contains("HOME is not set"), "{}", stdout(&out));
+    assert!(!stderr(&out).contains("panicked"), "{}", stderr(&out));
+
+    // The hook must not get in the way: one JSON object, status 0, the problem on stderr.
+    let mut cmd = bare(&["hook"]);
+    let mut child = cmd
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    drop(child.stdout.take());
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"session_id":"s1","cwd":"/w","source":"startup"}"#)
+        .unwrap();
     let out = child.wait_with_output().unwrap();
-    assert!(!stderr(&out).contains("panicked"), "{}", stderr(&out));
+    let hook = hook_output(&out);
+    assert!(
+        hook["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("Session ID: s1")
+    );
+    assert!(
+        stderr(&out).contains("could not register the session"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]
