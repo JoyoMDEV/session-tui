@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 use chrono::{DateTime, Duration, Utc};
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// What `list` keeps. An empty filter keeps everything; all given filters must match.
 #[derive(Default)]
@@ -49,9 +49,21 @@ fn in_or_below(cwd: &str, dir: &str) -> bool {
 }
 
 /// An absolute form of `path` for comparing with the directories sessions were started in.
-/// Relative paths are taken from the current directory; symlinks are not resolved.
+/// Relative paths are taken from the current directory. `.` and `..` are resolved by the path
+/// alone, so symlinks are not followed and the directory need not exist.
 pub fn absolute_dir(path: &str) -> Result<String> {
-    Ok(std::path::absolute(Path::new(path))?.display().to_string())
+    let mut resolved = PathBuf::new();
+    for part in std::path::absolute(Path::new(path))?.components() {
+        match part {
+            Component::CurDir => {}
+            // `/..` is `/`, so there is nothing to pop at the root.
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            other => resolved.push(other),
+        }
+    }
+    Ok(resolved.display().to_string())
 }
 
 /// `30m`, `12h`, `7d` or `2w`, counted back from `now`.
@@ -330,6 +342,27 @@ mod tests {
         ] {
             assert!(parse_since(bad, now).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn absolute_dir_resolves_dot_and_dot_dot_without_touching_the_disk() {
+        for (given, want) in [
+            ("/a/b", "/a/b"),
+            ("/a/b/", "/a/b"),
+            ("/a/./b", "/a/b"),
+            ("/a/b/../c", "/a/c"),
+            ("/a/b/..", "/a"),
+            ("/a/../../b", "/b"),
+            ("/..", "/"),
+        ] {
+            assert_eq!(absolute_dir(given).unwrap(), want, "{given}");
+        }
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(absolute_dir(".").unwrap(), here.display().to_string());
+        let parent = here
+            .parent()
+            .map_or("/".to_string(), |p| p.display().to_string());
+        assert_eq!(absolute_dir("..").unwrap(), parent);
     }
 
     #[test]
