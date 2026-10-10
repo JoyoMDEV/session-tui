@@ -42,7 +42,9 @@ impl Env {
             .env("SESSIONS_FILE", self.sessions_file())
             .env_remove("CLAUDE_SESSION_ID")
             .env_remove("CLAUDE_ENV_FILE")
-            .env_remove("SESSIONS_RESUME_REMINDER");
+            .env_remove("SESSIONS_RESUME_REMINDER")
+            .env_remove("SESSIONS_PRESET")
+            .env_remove("SESSIONS_CLAUDE_ARGS");
         cmd
     }
 
@@ -1215,6 +1217,77 @@ fn a_broken_preset_never_stops_a_session_from_starting() {
         assert!(
             s.get("title").is_none() && s.get("tickets").is_none(),
             "{preset:?}"
+        );
+    }
+}
+
+/// The names of the environment variables the program reads: the literals passed to
+/// `std::env::var` and `var_os` in `src/`, and every string that is exactly the name of one of
+/// ours (`SESSIONS_…`, `CLAUDE_…`), which also finds one read through a constant. `PATH` is left
+/// out, because the tests use the real one on purpose.
+fn variables_read_by_the_program() -> Vec<String> {
+    fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                rust_files(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+    let ours = |s: &str| {
+        (s.starts_with("SESSIONS_") || s.starts_with("CLAUDE_"))
+            && s.chars().all(|c| c.is_ascii_uppercase() || c == '_')
+    };
+    let mut files = Vec::new();
+    rust_files(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
+    let mut names = Vec::new();
+    let mut add = |name: &str| {
+        if name != "PATH" && !names.contains(&name.to_string()) {
+            names.push(name.to_string());
+        }
+    };
+    for file in files {
+        let text = fs::read_to_string(file).unwrap();
+        for call in ["env::var(\"", "env::var_os(\""] {
+            for part in text.split(call).skip(1) {
+                add(part.split('"').next().unwrap_or(""));
+            }
+        }
+        // Between two quotes: every second piece of a line split on `"` is a string literal.
+        for line in text.lines() {
+            for literal in line.split('"').skip(1).step_by(2) {
+                if ours(literal) {
+                    add(literal);
+                }
+            }
+        }
+    }
+    names.sort();
+    names
+}
+
+/// A variable the program reads that `Env::command` neither sets nor removes would let the shell
+/// that runs `cargo test` change the result, as `SESSIONS_PRESET` once did.
+#[test]
+fn the_test_environment_sets_or_clears_every_variable_the_program_reads() {
+    let source = include_str!("cli.rs");
+    let start = source.find("fn command(&self").expect("Env::command");
+    let end = source[start..].find("fn run(&self").expect("Env::run") + start;
+    let command = &source[start..end];
+    let names = variables_read_by_the_program();
+    assert!(
+        names.len() >= 8,
+        "found too few variables, the scan is broken: {names:?}"
+    );
+    for name in names {
+        assert!(
+            command.contains(&format!("\"{name}\"")),
+            "Env::command neither sets nor removes {name}"
         );
     }
 }

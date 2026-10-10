@@ -126,14 +126,15 @@ fn binary_checks(exe: &Path, path_var: &OsStr) -> Vec<Check> {
     out
 }
 
-/// The directories the plugin's hook looks in, as written in `hooks/hooks.json`.
-fn plugin_search_path(home: &Path, path_var: &OsStr) -> std::ffi::OsString {
-    let mut dirs = vec![
-        home.join(".local/bin"),
-        home.join(".cargo/bin"),
-        PathBuf::from("/opt/homebrew/bin"),
-        PathBuf::from("/usr/local/bin"),
-    ];
+/// The fixed system directories the plugin's hook looks in after the ones under the home
+/// directory, as written in `hooks/hooks.json`.
+const SYSTEM_BIN_DIRS: [&str; 2] = ["/opt/homebrew/bin", "/usr/local/bin"];
+
+/// The directories the plugin's hook looks in: under `home`, then `system_dirs`, then `path_var`.
+/// The caller passes the system directories so that a test does not find a real installation.
+fn plugin_search_path(home: &Path, system_dirs: &[&str], path_var: &OsStr) -> std::ffi::OsString {
+    let mut dirs = vec![home.join(".local/bin"), home.join(".cargo/bin")];
+    dirs.extend(system_dirs.iter().map(PathBuf::from));
     dirs.extend(std::env::split_paths(path_var));
     std::env::join_paths(dirs).unwrap_or_default()
 }
@@ -143,6 +144,7 @@ fn hook_check(
     settings_path: &Path,
     current_exe: &Path,
     home: &Path,
+    system_dirs: &[&str],
     path_var: &OsStr,
 ) -> Check {
     let shown = settings_path.display();
@@ -186,7 +188,7 @@ fn hook_check(
     }
 
     if setup::plugin_enabled(value) {
-        return match find_in_path("sessions", &plugin_search_path(home, path_var)) {
+        return match find_in_path("sessions", &plugin_search_path(home, system_dirs, path_var)) {
             Some(p) => ok(
                 "hook",
                 format!(
@@ -383,6 +385,7 @@ pub fn gather() -> Vec<Check> {
         &settings_path,
         &exe,
         &home,
+        &SYSTEM_BIN_DIRS,
         &path_var,
     ));
     checks.extend(sessions_checks(&transcript::existing_ids()));
@@ -500,6 +503,7 @@ mod tests {
             Path::new("/s.json"),
             &exe,
             Path::new(HOME),
+            &[],
             OsStr::new(""),
         );
         assert_eq!(c.level, Level::Ok, "{}", c.detail);
@@ -516,6 +520,7 @@ mod tests {
             Path::new("/s.json"),
             &exe,
             Path::new(HOME),
+            &[],
             OsStr::new(""),
         );
         assert_eq!(c.level, Level::Fail);
@@ -534,6 +539,7 @@ mod tests {
             Path::new("/s.json"),
             &running,
             Path::new(HOME),
+            &[],
             OsStr::new(""),
         );
         assert_eq!(c.level, Level::Warn);
@@ -549,6 +555,7 @@ mod tests {
                 Path::new("/s.json"),
                 exe,
                 Path::new(HOME),
+                &[],
                 OsStr::new(""),
             )
             .level
@@ -570,6 +577,7 @@ mod tests {
                 Path::new("/s.json"),
                 Path::new("/x/sessions"),
                 home,
+                &[],
                 OsStr::new(""),
             )
         };
@@ -578,6 +586,14 @@ mod tests {
         fake_binary(&home.join(".local/bin"), "sessions");
         assert_eq!(run(&home).level, Level::Ok, "binary in ~/.local/bin");
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_system_directories_are_the_ones_the_plugin_hook_searches() {
+        let hooks = include_str!("../hooks/hooks.json");
+        for dir in SYSTEM_BIN_DIRS {
+            assert!(hooks.contains(dir), "{dir} is not in hooks/hooks.json");
+        }
     }
 
     fn samples(prompts: usize, titled: usize, total: usize) -> Vec<Sample> {
