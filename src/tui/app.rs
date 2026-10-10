@@ -1,5 +1,5 @@
 //! The state of the browser and everything that changes it. `App` can be driven without a
-//! terminal, which is how it is tested.
+//! terminal, which is how it is tested. It does not draw.
 
 use super::Launch;
 use crate::launch::{NewSession, default_args};

@@ -1,4 +1,5 @@
 //! `start`: start a new Claude Code session in a directory, for tickets and with a first message.
+//! It does not write `sessions.json`: the hook of the new session records the tickets and title.
 
 use crate::launch::{self, NewSession};
 use crate::paths;

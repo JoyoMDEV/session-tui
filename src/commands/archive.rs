@@ -1,4 +1,5 @@
-//! `archive` and `unarchive`: move a finished session out of the default list, or back.
+//! `archive` and `unarchive`: move a finished session out of the default list, or back. They change
+//! the flag only, never the time of the last activity.
 
 use super::edit::modify;
 use anyhow::Result;

@@ -1,4 +1,5 @@
-//! `prune`: remove sessions whose transcript is gone. A dry run unless confirmed.
+//! `prune`: remove sessions whose transcript is gone. A dry run unless confirmed, and a session
+//! touched in the last hour is spared.
 
 use crate::output::say;
 use crate::{store, transcript};

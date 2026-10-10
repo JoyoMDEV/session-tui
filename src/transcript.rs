@@ -1,4 +1,6 @@
 //! Read-only access to Claude Code's own session transcripts (`<config>/projects/*/<id>.jsonl`).
+//! It never writes to them, and a record it does not understand means less information, never an
+//! error and never a loop that does not end.
 
 use crate::store::{self, Session};
 use anyhow::Result;

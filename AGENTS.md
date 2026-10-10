@@ -78,8 +78,9 @@ covers `README.md`, `AGENTS.md`, `docs/` and the skill files, not the pull reque
 - Print to stdout only through `output` (`say!` and `text`). `println!` panics on a closed pipe, as
   in `sessions list | head`, so clippy denies it and `print!`; `output` ends quietly instead and
   reports it, so a loop can stop. Diagnostics go to stderr with `eprintln!`.
-- A missing environment variable (`HOME`, say) is an error with a message, never a panic, and the
-  hook reports a problem on stderr and still prints its JSON.
+- A missing environment variable (`HOME`, say) is an error with a message, never a panic. The hook
+  reports a problem registering the session on stderr and still prints its JSON; input that is not
+  JSON, or an executable path it cannot find, ends it with an error and no JSON.
 - Resuming uses `exec`, which is why the tool is Unix only.
 - Logic is unit-tested next to the code, and `App` in `tui.rs` can be tested without a terminal. To
   check how the TUI looks and feels, drive it in tmux against a temporary sessions file.

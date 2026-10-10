@@ -1,5 +1,6 @@
-//! Choosing sessions for the commands that report on them: the filters of `list`, `log` and `resume`,
-//! the search of the browser's search box, and the JSON view scripts read. It selects and describes sessions; it does not print or change anything.
+//! Choosing sessions for the commands that report on them: the filters of `list`, `log` and
+//! `resume`, the search of the browser's search box, and the JSON view scripts read. It selects
+//! and describes sessions; it does not print or change anything.
 
 use crate::store::Session;
 use crate::{tags, tickets};

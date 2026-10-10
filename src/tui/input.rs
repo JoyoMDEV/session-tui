@@ -1,5 +1,5 @@
 //! Keyboard and mouse handling: reads events, changes the `App`, and decides when the browser
-//! is done and which session to launch.
+//! is done and which session to launch. It does not draw: the loop only asks `draw` for each frame.
 
 use super::Launch;
 use super::app::{App, Field, Mode};

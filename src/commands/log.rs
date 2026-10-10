@@ -2,24 +2,23 @@
 //! Archived sessions are included: they are finished work, which a timeline should show.
 
 use crate::cli::FilterArgs;
+use crate::output::say;
 use crate::query::{self, Filters};
 use crate::store::Session;
 use crate::{commands, store};
 use anyhow::Result;
-use std::io::Write;
 
 pub fn run(args: FilterArgs, markdown: bool) -> Result<()> {
     let filters = commands::filters(args, true)?;
     let sessions = store::load()?;
-    let mut out = std::io::stdout().lock();
     for s in timeline(&sessions, &filters) {
         let line = if markdown {
             markdown_line(s)
         } else {
             text_line(s)
         };
-        // `println!` panics on a closed pipe, e.g. `sessions log | head`.
-        if writeln!(out, "{line}").is_err() {
+        // A closed pipe ends the timeline, as for `sessions log | head`.
+        if !say!("{line}") {
             break;
         }
     }

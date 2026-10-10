@@ -1,27 +1,25 @@
-//! `list`: print sessions, one line each or as JSON, optionally filtered.
+//! `list`: print sessions, one line each or as JSON, optionally filtered. It only reads.
 
 use crate::cli::FilterArgs;
+use crate::output::say;
 use crate::query::TitleSource;
 use crate::store::Session;
 use crate::{commands, query, store};
 use anyhow::Result;
-use std::io::Write;
 
 pub fn run(args: FilterArgs, all: bool, json: bool) -> Result<()> {
     let filters = commands::filters(args, all)?;
     let sessions = store::load()?;
     let chosen: Vec<_> = sessions.iter().filter(|s| filters.matches(s)).collect();
 
-    let mut out = std::io::stdout().lock();
     if json {
         let views: Vec<_> = chosen.iter().map(|s| query::view(s)).collect();
-        // A closed pipe is not an error worth reporting, as for the text output below.
-        let _ = writeln!(out, "{}", serde_json::to_string_pretty(&views)?);
+        say!("{}", serde_json::to_string_pretty(&views)?);
         return Ok(());
     }
     for s in chosen {
-        // `println!` panics on a closed pipe, e.g. `sessions list | head`.
-        if writeln!(out, "{}", text_line(s)).is_err() {
+        // A closed pipe ends the listing, as for `sessions list | head`.
+        if !say!("{}", text_line(s)) {
             break;
         }
     }

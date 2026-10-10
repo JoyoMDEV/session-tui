@@ -247,7 +247,7 @@ Claude Code deletes old transcripts (30 days by default, see `cleanupPeriodDays`
 
 Use Claude Code's picker to jump back into recent work in the current repository. As documented at the time of writing, it has previews, renaming, a branch filter, worktree grouping and a lookup by pull request URL, and `sessions` does not try to replace those.
 
-Use `sessions` when you want to find work by ticket, branch or note across all projects, add context of your own, or look back further than Claude Code keeps transcripts. Its documentation mentions no tags or notes, and it shows the current repository by default; `Ctrl+A` widens it to all projects.
+Use `sessions` when you want to find work by ticket, branch or note across all projects, add context of your own, or look back further than Claude Code keeps transcripts. Claude Code's picker, by its documentation, has no tags or notes, and shows the current repository by default; `Ctrl+A` there widens it to all projects. `sessions` lists all projects by default, and `^L` narrows it to the current directory.
 
 The two share names where it matters: on resume the hook passes your title to Claude Code, so it shows up in its picker too.
 
@@ -255,8 +255,8 @@ The two share names where it matters: on resume the hook passes your title to Cl
 
 ```sh
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
 claude plugin validate --strict .
 npx --yes markdownlint-cli2@0.23.3
 ```

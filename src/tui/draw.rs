@@ -330,7 +330,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             Line::from(text)
         }
         Mode::New(_) => Line::from(
-            "Esc cancels  Tab completes the directory  ↑↓ Enter field  ^U clears  Enter in Title starts".dim(),
+            "Esc cancels  Enter in Title starts  Tab completes  ↑↓ Enter field  ^U clears".dim(),
         ),
         Mode::Tags(..) => Line::from(
             "↑↓ select  Enter filters by the tag (again: removes the filter)  Esc closes".dim(),
@@ -444,7 +444,7 @@ mod tests {
         app.open_new();
         let screen = render(&mut app, 80, 30);
         let help = screen.last().unwrap();
-        for key in ["Esc cancels", "Tab completes"] {
+        for key in ["Esc cancels", "Enter in Title starts", "Tab completes"] {
             assert!(help.contains(key), "{key} is cut off: {help:?}");
         }
     }
@@ -483,7 +483,7 @@ mod tests {
             "Message",
             "Tickets",
             "Title",
-            "Tab completes the directory",
+            "Tab completes",
         ] {
             assert!(screen.contains(want), "{want} missing:\n{screen}");
         }

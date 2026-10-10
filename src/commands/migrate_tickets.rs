@@ -1,4 +1,5 @@
-//! `migrate-tickets`: move tags that look like ticket keys into the tickets field.
+//! `migrate-tickets`: move tags that look like ticket keys into the tickets field. It changes
+//! nothing without `--yes`, and then keeps a backup of the file.
 
 use crate::output::say;
 use crate::{store, tickets};
