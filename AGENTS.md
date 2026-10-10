@@ -33,7 +33,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `tests/readme.rs` | Keeps the README command list in step with `sessions --help` |
 | `tests/docs.rs` | Checks that links in the Markdown files resolve and that `docs/Home.md` links every page in `docs/` |
 | `docs/` | `Home.md` (the index), `reference/`, `explanation/`, `how-to/` (maintainer tasks) and `adr/` |
-| `.claude/skills/` | Project skills for maintainers, not part of the plugin. `pre-release/` is the check before a release (`/pre-release <version>`) |
+| `.claude/CLAUDE.md`, `.claude/skills/` | Instructions for Claude Code (an import of this file) and project skills for maintainers, not part of the plugin. `pre-release/` is the check before a release (`/pre-release <version>`) |
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
@@ -89,6 +89,10 @@ covers `README.md`, `AGENTS.md`, `docs/` and the skill files, not the pull reque
   runs `cargo fmt --check`, `shellcheck` and the Markdown lint on what changed. `commit-msg`
   checks the rules under "Commits". `pre-push` runs clippy and the tests. They call
   `scripts/check.sh` and skip a check whose tool is missing; CI runs every check regardless.
+- `.claude/CLAUDE.md` only imports this file (`@../AGENTS.md`), for versions of Claude Code that
+  don't read `AGENTS.md` themselves. It is not at the repository root, because the root is the
+  plugin root and a `CLAUDE.md` there makes `claude plugin validate --strict .` fail;
+  `tests/plugin.rs` checks that.
 - After moving or renaming your checkout, run `cargo clean`. `tests/plugin.rs` embeds the manifest
   path at compile time, so a stale build looks for the old location.
 
