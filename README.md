@@ -95,6 +95,8 @@ Run `sessions` to open the browser.
 | `^O` | Resume with extra `claude` flags |
 | `^V` | Preview the conversation (`Esc` closes) |
 | `Tab` | Show or hide empty sessions (no title and no prompt) |
+| `^D` | Archive the selected session, or bring it back if it is archived. Archived sessions are hidden by default |
+| `^A` | Show or hide archived sessions |
 | `^L` | Only sessions in or around the current directory |
 | `^B` | Only sessions on the git branch checked out in the current directory |
 | `^R` `^T` `^K` `^E` | Edit title, tags, tickets, note |
@@ -122,9 +124,10 @@ The agent calls these, but you can too.
 | `sessions import` | Register transcripts that aren't known yet |
 | `sessions prune [--yes]` | Remove entries whose transcript is gone (dry run without `--yes`) |
 | `sessions rm <id>` | Remove an entry |
-| `sessions list [filters] [--json]` | Print all entries, or only those that match every filter. See [Filtering `list` and `log`](#filtering-list-and-log) |
+| `sessions archive <id>` | Move a finished session out of the default list. It stays in the file and is found by `list --all`, `log` and the browser's `^A`. `sessions unarchive <id>` brings it back |
+| `sessions list [filters] [--all] [--json]` | Print the entries, or only those that match every filter. Archived entries are left out unless you add `--all`. See [Filtering `list` and `log`](#filtering-list-and-log) |
 | `sessions log [filters] [--markdown]` | Print a timeline of the matching entries, newest first. See [Timeline with `log`](#timeline-with-log) |
-| `sessions resume [query] [filters] [--list]` | Resume the one session a query points to, without the browser. See [Resume from the shell](#resume-from-the-shell) |
+| `sessions resume [query] [filters] [--all] [--list]` | Resume the one session a query points to, without the browser. See [Resume from the shell](#resume-from-the-shell) |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
 
@@ -158,6 +161,8 @@ $ sessions log --ticket ABC-123
 - **2026-10-06** Fix login redirect (`feat/login`, [PR #558](https://github.com/o/r/pull/558), `/work/app`)
 ```
 
+`log` includes archived sessions: they are finished work, and a timeline with holes would mislead.
+
 Dates are UTC, as in `list`. A title is yours, else the one Claude Code generated, else the start of the first prompt, and `(untitled)` if there is none.
 
 #### Resume from the shell
@@ -170,7 +175,7 @@ sessions resume --ticket ABC-123 --branch feat/login
 alias cr='sessions resume'
 ```
 
-It resumes only when exactly one session matches. If several do, it lists them and exits with an error rather than guessing; if none does, or the transcript is gone, it says so. `--list` prints the matches without resuming, most recent first.
+It resumes only when exactly one session matches. If several do, it lists them and exits with an error rather than guessing; if none does, or the transcript is gone, it says so. `--list` prints the matches without resuming, most recent first. Archived sessions are left out unless you add `--all`.
 
 ### Tags
 

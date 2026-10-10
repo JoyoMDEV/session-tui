@@ -39,6 +39,9 @@ pub struct Session {
     pub agent: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Finished work: hidden from the default list, but kept and still searchable.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub archived: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -143,6 +146,7 @@ pub fn new_session(
         tickets: Vec::new(),
         agent: default_agent(),
         note: None,
+        archived: false,
         created_at,
         updated_at,
     }
@@ -170,6 +174,24 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sessions-test-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         dir.join("sessions.json")
+    }
+
+    #[test]
+    fn archived_is_kept_by_upsert_and_only_written_when_set() {
+        let now = Utc::now();
+        let mut all = vec![new_session("a", "/x", now, now)];
+        assert!(!serde_json::to_string(&all).unwrap().contains("archived"));
+        all[0].archived = true;
+        upsert(&mut all, "a", "/y");
+        assert!(
+            all[0].archived,
+            "the hook must not un-archive a resumed session"
+        );
+        assert!(
+            serde_json::to_string(&all)
+                .unwrap()
+                .contains("\"archived\":true")
+        );
     }
 
     #[test]

@@ -19,11 +19,14 @@ pub struct Filters {
     pub cwd: Option<String>,
     /// Sessions updated at or after this time.
     pub since: Option<DateTime<Utc>>,
+    /// Keep archived sessions too. They are left out otherwise.
+    pub include_archived: bool,
 }
 
 impl Filters {
     pub fn matches(&self, s: &Session) -> bool {
-        tickets::has_all(s, &self.tickets)
+        (self.include_archived || !s.archived)
+            && tickets::has_all(s, &self.tickets)
             && tags::has_all(s, &self.tags)
             && self
                 .branch
@@ -150,6 +153,7 @@ pub struct View<'a> {
     pub tags: &'a [String],
     pub note: Option<&'a str>,
     pub agent: &'a str,
+    pub archived: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -170,6 +174,7 @@ pub fn view(s: &Session) -> View<'_> {
         tags: &s.tags,
         note: s.note.as_deref(),
         agent: &s.agent,
+        archived: s.archived,
         created_at: s.created_at,
         updated_at: s.updated_at,
     }
@@ -236,6 +241,19 @@ mod tests {
         assert!(f(None, Some("/work/app/")).matches(&s));
         assert!(!f(None, Some("/work/ap")).matches(&s), "not a path prefix");
         assert!(!f(None, Some("/work/app/api/v2")).matches(&s));
+    }
+
+    #[test]
+    fn archived_sessions_are_left_out_unless_asked_for() {
+        let mut s = session("a", "/x", 1);
+        assert!(Filters::default().matches(&s));
+        s.archived = true;
+        assert!(!Filters::default().matches(&s));
+        let all = Filters {
+            include_archived: true,
+            ..Default::default()
+        };
+        assert!(all.matches(&s));
     }
 
     #[test]
@@ -328,6 +346,7 @@ mod tests {
                 "tags",
                 "note",
                 "agent",
+                "archived",
                 "created_at",
                 "updated_at"
             ]
@@ -335,5 +354,6 @@ mod tests {
         assert!(json["title"].is_null() && json["branch"].is_null());
         assert_eq!(json["tags"], serde_json::json!([]));
         assert_eq!(json["agent"], "claude-code");
+        assert_eq!(json["archived"], false);
     }
 }

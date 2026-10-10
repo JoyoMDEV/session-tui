@@ -1,4 +1,5 @@
 //! `log`: a timeline of the matching sessions, newest first, as text or as a Markdown list.
+//! Archived sessions are included: they are finished work, which a timeline should show.
 
 use crate::cli::FilterArgs;
 use crate::query::{self, Filters};
@@ -8,7 +9,7 @@ use anyhow::Result;
 use std::io::Write;
 
 pub fn run(args: FilterArgs, markdown: bool) -> Result<()> {
-    let filters = commands::filters(args)?;
+    let filters = commands::filters(args, true)?;
     let sessions = store::load()?;
     let mut out = std::io::stdout().lock();
     for s in timeline(&sessions, &filters) {

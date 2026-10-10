@@ -6,8 +6,8 @@ use crate::{commands, query, store};
 use anyhow::Result;
 use std::io::Write;
 
-pub fn run(args: FilterArgs, json: bool) -> Result<()> {
-    let filters = commands::filters(args)?;
+pub fn run(args: FilterArgs, all: bool, json: bool) -> Result<()> {
+    let filters = commands::filters(args, all)?;
     let sessions = store::load()?;
     let chosen: Vec<_> = sessions.iter().filter(|s| filters.matches(s)).collect();
 

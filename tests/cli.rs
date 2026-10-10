@@ -666,6 +666,65 @@ fn resume_list_shows_the_matches_without_starting_anything() {
 }
 
 #[test]
+fn archive_hides_a_session_from_list_and_resume_but_not_from_log_or_list_all() {
+    let (env, bin) = resumable_env("archive");
+    assert!(env.run(&["archive", "login"]).status.success());
+    assert_eq!(env.session("login")["archived"], true);
+    // Archiving is not activity: the timeline and the sort order keep their place.
+    assert_eq!(env.session("login")["updated_at"], "2026-10-01T00:00:00Z");
+
+    assert_eq!(listed_ids(&env, &[]), ["logout", "gone"]);
+    assert_eq!(listed_ids(&env, &["--all"]), ["login", "logout", "gone"]);
+    assert_eq!(
+        listed_ids(&env, &["--tag", "auth", "--all"]),
+        ["login", "logout"]
+    );
+
+    let json = env.run(&["list", "--json", "--all", "--tag", "auth"]);
+    let list: Value = serde_json::from_str(&stdout(&json)).unwrap();
+    assert_eq!(list[0]["id"], "login");
+    assert_eq!(list[0]["archived"], true);
+    assert_eq!(list[1]["archived"], false);
+
+    assert_eq!(
+        stdout(&env.run(&["log"])).lines().count(),
+        3,
+        "log keeps archived sessions"
+    );
+
+    let hidden = resume(&env, &bin, &["--ticket", "ABC-1"]);
+    assert!(
+        stderr(&hidden).contains("no session matches"),
+        "{}",
+        stderr(&hidden)
+    );
+    assert!(launched(&env).is_none());
+    let shown = resume(&env, &bin, &["--all", "--ticket", "ABC-1"]);
+    assert!(shown.status.success(), "{}", stderr(&shown));
+    assert_eq!(launched(&env).unwrap()[1..], ["--resume", "login"]);
+
+    assert!(env.run(&["unarchive", "login"]).status.success());
+    assert!(env.session("login").get("archived").is_none());
+    assert_eq!(listed_ids(&env, &[]), ["login", "logout", "gone"]);
+}
+
+#[test]
+fn archive_survives_the_hook_and_fails_for_an_unknown_session() {
+    let env = Env::new("archive-hook");
+    env.register("s1", "/w");
+    assert!(env.run(&["archive", "s1"]).status.success());
+    env.hook(json!({"session_id": "s1", "cwd": "/w2", "source": "resume"}));
+    assert_eq!(env.session("s1")["archived"], true);
+
+    for command in ["archive", "unarchive"] {
+        let out = env.run(&[command, "typo"]);
+        assert!(!out.status.success(), "{command}");
+        assert!(stderr(&out).contains("no session typo"), "{}", stderr(&out));
+    }
+    assert_eq!(env.sessions().len(), 1);
+}
+
+#[test]
 fn list_survives_a_closed_pipe() {
     let env = Env::new("list-pipe");
     for i in 0..200 {
