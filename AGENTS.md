@@ -16,7 +16,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/main.rs`, `src/lib.rs` | `main.rs` calls `sessions::run()`; `lib.rs` parses the command line and dispatches |
 | `src/cli.rs` | The clap definition of every command |
 | `src/hook.rs` | The `SessionStart` hook |
-| `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `log`, `resume`, `start`, `prune`, `rm`, `import`, `migrate-tickets` |
+| `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `log`, `resume`, `start`, `prune`, `rm`, `import`, `migrate-tickets`, `archive` and `unarchive` (`archive.rs`) |
 | `src/output.rs` | Stdout that survives a closed pipe: `say!` and `text`; `println!` is denied by clippy |
 | `src/launch.rs` | Replaces the process with `claude` to resume or start a session, for the browser and the commands |
 | `src/preset.rs`, `src/paths.rs` | The tickets and title handed to the hook of a started session (`$SESSIONS_PRESET`); directories typed by a person |
@@ -144,7 +144,7 @@ ci: add lint and test workflow
 - Describe four things: what changed, why now, the exact commands to verify it, and anything
   deliberately left out or still to do. `.github/pull_request_template.md` has the headings.
 - Keep it to one concern and roughly 400 lines of diff or less, not counting `Cargo.lock`.
-- CI must pass. PR checks don't run `release.yml` or `homebrew.yml`, so say how you verified changes
+- CI must pass. PR checks don't run `release.yml`, `homebrew.yml` or `wiki.yml`, so say how you verified changes
   to them, for example a manual run of the workflow.
 - Merge with squash and delete the branch.
 - Dependabot PRs: green CI is not enough for workflow changes. Read the release notes for breaking
@@ -156,9 +156,11 @@ ci: add lint and test workflow
   match. `cargo build` updates the lock file, and `tests/plugin.rs` checks the plugin manifest.
 - Push a tag `vX.Y.Z` on a green `main`. `release.yml` checks that the tag equals the crate version,
   builds four targets, publishes the archives with their SHA-256 files, and then calls `homebrew.yml`
-  to update the formula in the tap repository. That job authenticates with the `TAP_DEPLOY_KEY`
-  secret, a deploy key that can write to the tap only.
-- To republish a formula for an existing release, run the Homebrew workflow by hand with the tag.
+  to update the formula in the tap repository and `wiki.yml` to publish the docs of the tag to the
+  wiki. The Homebrew job authenticates with the `TAP_DEPLOY_KEY` secret, a deploy key that can write
+  to the tap only; the wiki job uses the repository's own token and writes to the wiki only.
+- To republish a formula or the wiki for an existing release, run the Homebrew or the Wiki workflow
+  by hand with the tag (`docs/how-to/release.md` has the commands).
 
 ## Boundaries
 

@@ -94,20 +94,20 @@ Run `sessions` to open the browser.
 | `Enter` | Resume the session in its original directory |
 | `^N` | Start a new session: the directory (`Tab` completes it), a first message, tickets and a title. See [Start a session](#start-a-session) |
 | `^O` | Resume with extra `claude` flags |
-| `^V` | Preview the conversation (`Esc` closes) |
+| `^V` | Preview the conversation (`Esc` or `q` closes) |
 | `Tab` | Show or hide empty sessions (no title and no prompt) |
 | `^D` | Archive the selected session, or bring it back if it is archived. Archived sessions are hidden by default |
 | `^A` | Show or hide archived sessions |
 | `^L` | Only sessions in or around the current directory |
 | `^B` | Only sessions on the git branch checked out in the current directory |
-| `^G` | Tag view: every tag with its number of sessions. `Enter` filters the list by the selected tag, and again removes the filter |
+| `^G` | Tag view: every tag with its number of sessions. `Enter` filters the list by the selected tag, and again removes the filter (`Esc` or `q` closes) |
 | `^R` `^T` `^K` `^E` | Edit title, tags, tickets, note. In the tag editor, `Tab` completes an existing tag |
 | `#auth` (in the search box) | Only sessions with exactly that tag, ignoring case; repeat it to require several |
 | `ticket:ABC-123` (in the search box) | Only sessions with exactly that ticket, ignoring case; repeat it to require several |
 | `^X` | Delete the entry (asks first) |
-| `Esc` | Quit |
+| `Esc`, `^C` | Quit |
 
-The TUI captures the mouse for scrolling, so select text with Shift held (Option in some terminals). On terminals under 22 rows the details pane is hidden to make room for the list.
+The TUI captures the mouse for scrolling, so select text with Shift held (Option in some terminals). On terminals under 25 rows the details pane is hidden to make room for the list.
 
 Each row shows the best title available: yours (plain), else the one Claude Code generated (italic), else a snippet of the first prompt (dimmed, marked with `~`). `^R` starts from whichever is shown.
 
@@ -189,7 +189,7 @@ It resumes only when exactly one session matches (`#tag` and `ticket:KEY` words 
 sessions start --dir ~/Code/app --ticket ABC-123 --title "Fix login redirect" fix the redirect after login
 ```
 
-In the browser, `^N` opens the same as a dialog. `Tab` completes the directory like a shell, with the directories you started sessions in before listed first and git repositories marked, and `↑` `↓` or `Enter` move between the fields, `Enter` in the last one starts, and `Esc` goes back to the list. The directory must exist (`~` and `$HOME` are expanded, and the default is the current directory). The words after the options are the first message; start them with `--` if the message begins with a dash. The flags from `SESSIONS_CLAUDE_ARGS` are passed to `claude` first, as when resuming.
+In the browser, `^N` opens the same as a dialog. `Tab` completes the directory like a shell, with the directories you started sessions in before listed first and git repositories marked, and `↑` `↓` or `Enter` move between the fields, `Enter` in the last one starts, `^U` clears the field with the cursor, and `Esc` goes back to the list. The directory must exist (`~` and `$HOME` are expanded, and the default is the current directory). The words after the options are the first message; start them with `--` if the message begins with a dash. The flags from `SESSIONS_CLAUDE_ARGS` are passed to `claude` first, as when resuming.
 
 The tickets and the title travel in the environment variable `SESSIONS_PRESET`, which Claude Code passes on to its hooks. That is how it behaved in version 2.1.296, when I tried it; it is not a documented promise and may change. The hook uses the preset only for a new session at startup, and tells the agent which tickets the session was started for. Without the hook (see [Set up the hook](#set-up-the-hook)) the session still starts, but nothing is recorded.
 
@@ -223,7 +223,8 @@ The transcript check matters after a Claude Code update. The format is internal 
 | --- | --- | --- |
 | `SESSIONS_FILE` | `<claude dir>/sessions.json` | Where sessions are stored |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config dir, also used to find transcripts |
-| `SESSIONS_CLAUDE_ARGS` | empty | Extra flags added to every `claude --resume` |
+| `SESSIONS_CLAUDE_ARGS` | empty | Extra flags added to every `claude` that the browser, `sessions resume` or `sessions start` runs. They come before the first message of a new session |
+| `SESSIONS_PRESET` | unset | Set by `sessions start` and the browser on the `claude` they start, read by the hook to record the tickets and the title of the new session. Not meant to be set by hand; see [Start a session](#start-a-session) |
 | `SESSIONS_RESUME_REMINDER` | on | Set to `0` to stop the hook asking the agent to re-check title and tags when a session is resumed |
 
 ## How it works
@@ -262,7 +263,7 @@ npx --yes markdownlint-cli2@0.23.3
 
 The last line lints the Markdown and needs Node. `sh scripts/check.sh lint` runs the format, clippy, shellcheck and Markdown checks together, as CI does, and `git config core.hooksPath .githooks` turns on optional git hooks that check what you commit and push (see [AGENTS.md](AGENTS.md)). The [documentation index](docs/Home.md) lists every page, ordered as tutorial, how-to guides, reference and explanation. How the program is put together is explained in [Architecture](docs/explanation/architecture.md). How the code is organised, and when to reconsider that, is recorded in [ADR 0001](docs/adr/0001-code-organisation.md). Conventions for contributors are in [AGENTS.md](AGENTS.md).
 
-`install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux, publishes them as a GitHub release and updates the formula in the [Homebrew tap](https://github.com/JoyoMDEV/homebrew-tap). The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
+`install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux, publishes them as a GitHub release and updates the formula in the [Homebrew tap](https://github.com/JoyoMDEV/homebrew-tap). `release.yml` refuses a tag that differs from the version in `Cargo.toml`, and `tests/plugin.rs` keeps `.claude-plugin/plugin.json` at the same version.
 
 ## License
 
