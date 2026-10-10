@@ -246,7 +246,7 @@ claude plugin validate --strict .
 npx --yes markdownlint-cli2@0.23.3
 ```
 
-The last line lints the Markdown and needs Node; CI runs the same command. The [documentation index](docs/Home.md) lists every page, ordered as tutorial, how-to guides, reference and explanation. How the program is put together is explained in [Architecture](docs/explanation/architecture.md). How the code is organised, and when to reconsider that, is recorded in [ADR 0001](docs/adr/0001-code-organisation.md). Conventions for contributors are in [AGENTS.md](AGENTS.md).
+The last line lints the Markdown and needs Node. `sh scripts/check.sh lint` runs the format, clippy, shellcheck and Markdown checks together, as CI does, and `git config core.hooksPath .githooks` turns on optional git hooks that check what you commit and push (see [AGENTS.md](AGENTS.md)). The [documentation index](docs/Home.md) lists every page, ordered as tutorial, how-to guides, reference and explanation. How the program is put together is explained in [Architecture](docs/explanation/architecture.md). How the code is organised, and when to reconsider that, is recorded in [ADR 0001](docs/adr/0001-code-organisation.md). Conventions for contributors are in [AGENTS.md](AGENTS.md).
 
 `install.sh` and `scripts/formula.sh` are checked with `shellcheck`. Pushing a tag like `v0.1.0` builds release archives for macOS and Linux, publishes them as a GitHub release and updates the formula in the [Homebrew tap](https://github.com/JoyoMDEV/homebrew-tap). The tag must match the version in `Cargo.toml` and `.claude-plugin/plugin.json`.
 
