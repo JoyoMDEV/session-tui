@@ -455,6 +455,22 @@ fn list_cwd_takes_a_relative_path_from_the_current_directory() {
 }
 
 #[test]
+fn list_rejects_an_age_with_a_multi_byte_character_instead_of_panicking() {
+    let env = filtered_env("list-since-utf8");
+    for age in ["7é", "é", "7😀"] {
+        let out = env.run(&["list", "--since", age]);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "--since {age}: {}",
+            stderr(&out)
+        );
+        assert!(stderr(&out).contains("--since"), "{}", stderr(&out));
+        assert!(!stderr(&out).contains("panicked"), "{}", stderr(&out));
+    }
+}
+
+#[test]
 fn list_rejects_an_age_it_cannot_read() {
     let env = filtered_env("list-bad-since");
     let out = env.run(&["list", "--since", "soon"]);

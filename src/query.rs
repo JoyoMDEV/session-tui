@@ -57,7 +57,8 @@ pub fn absolute_dir(path: &str) -> Result<String> {
 /// `30m`, `12h`, `7d` or `2w`, counted back from `now`.
 pub fn parse_since(text: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>> {
     let text = text.trim();
-    let split = text.len().saturating_sub(1);
+    // Split before the last character, not the last byte: the unit may be a multi-byte character.
+    let split = text.char_indices().next_back().map_or(0, |(i, _)| i);
     let (number, unit) = text.split_at(split);
     let Ok(n) = number.parse::<i64>() else {
         bail!("can't read --since {text:?}: use a number and m, h, d or w, such as 7d");
@@ -322,6 +323,10 @@ mod tests {
             "1.5d",
             "7 d",
             "99999999999999999999d",
+            "7é",
+            "é",
+            "7😀",
+            "日",
         ] {
             assert!(parse_since(bad, now).is_err(), "{bad:?}");
         }
