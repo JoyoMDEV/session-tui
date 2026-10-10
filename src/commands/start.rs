@@ -19,10 +19,20 @@ pub fn run(
         Ok(dir) => dir,
         Err(why) => bail!("{why}"),
     };
+    let preset = Preset::new(tickets, title);
+    if let Some(bad) = preset
+        .tickets
+        .iter()
+        .find(|t| t.contains(char::is_whitespace))
+    {
+        bail!(
+            "{bad:?} is not a ticket key: a key has no spaces. Give each ticket as its own --ticket"
+        );
+    }
     let new = NewSession {
         dir: dir.display().to_string(),
         prompt: prompt.join(" "),
-        preset: Preset::new(tickets, title),
+        preset,
     };
     let flags: Vec<String> = launch::default_args()
         .split_whitespace()

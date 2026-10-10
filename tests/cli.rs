@@ -1248,6 +1248,24 @@ fn start_removes_a_preset_inherited_from_the_shell() {
 }
 
 #[test]
+fn start_refuses_a_ticket_key_with_a_space_instead_of_losing_it() {
+    let (env, bin) = resumable_env("start-bad-ticket");
+    let dir = env.dir.join("app");
+    let out = start(
+        &env,
+        &bin,
+        &["--dir", dir.to_str().unwrap(), "--ticket", "A B"],
+    );
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("is not a ticket key"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(launched(&env).is_none(), "nothing may be started");
+}
+
+#[test]
 fn start_refuses_a_directory_that_does_not_exist_or_is_a_file() {
     let (env, bin) = resumable_env("start-bad-dir");
     fs::write(env.dir.join("file.txt"), "x").unwrap();
