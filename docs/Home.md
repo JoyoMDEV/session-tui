@@ -25,6 +25,7 @@ Steps for a specific task.
 - [Fix a problem](../README.md#troubleshooting)
 - [Contribute, build, test and release](../AGENTS.md): conventions and process for maintainers.
   Longer maintainer how-tos are in `docs/how-to/` and listed here.
+- [Make a release](how-to/release.md), including the pre-release check
 - [Publish the documentation to the wiki](how-to/publish-the-wiki.md)
 
 ## Reference
