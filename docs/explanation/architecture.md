@@ -13,8 +13,9 @@ the terminal browser.
 There are three ways in, and they share the same data:
 
 * **The hook** runs at every Claude Code session start and registers the session.
-* **The commands** (`title`, `tag`, `ticket`, `note`, `list`, `log`, `resume`, `start`, `prune`, `rm`, `import`,
-  `migrate-tickets`) are called by the agent, by you, or from scripts.
+* **The commands** (`title`, `tag`, `ticket`, `note`, `list`, `log`, `resume`, `start`, `archive`,
+  `unarchive`, `prune`, `rm`, `import`, `migrate-tickets`) are called by the agent, by you, or from
+  scripts.
 * **The browser** lists, searches and edits the same sessions and resumes one.
 
 All of them read and write `sessions.json`. Claude Code's transcripts are only ever read.
@@ -75,8 +76,9 @@ into ratatui's `TestBackend` and look at the text. Resuming replaces the process
   temporary directory and checks output, exit status and files. It is the safety net for
   refactoring, because it does not know how the code is organised.
 * `tests/readme.rs` fails if a command is missing from the README, `tests/docs.rs` fails on a
-  broken link between documentation pages or a page the index does not list, and `tests/plugin.rs`
-  keeps the plugin manifests and the hook in step with the crate.
+  broken link between documentation pages or a page the index does not list, `tests/plugin.rs`
+  keeps the plugin manifests and the hook in step with the crate, `tests/hooks.rs` runs the checks
+  behind the optional git hooks, and `tests/wiki.rs` runs the script that builds the wiki pages.
 
 ## What is likely to change
 

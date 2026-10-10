@@ -330,7 +330,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             Line::from(text)
         }
         Mode::New(_) => Line::from(
-            "Tab completes the directory  ↑↓ Enter field  ^U clears  Enter in Title starts  Esc cancels".dim(),
+            "Esc cancels  Tab completes the directory  ↑↓ Enter field  ^U clears  Enter in Title starts".dim(),
         ),
         Mode::Tags(..) => Line::from(
             "↑↓ select  Enter filters by the tag (again: removes the filter)  Esc closes".dim(),
@@ -339,7 +339,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
         Mode::Preview(..) => Line::from("".dim()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^N new  ^V preview  ^O flags  Tab empty  ^G tags  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^N new  Esc quit  ^V preview  ^O flags  Tab empty  ^G tags  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);
@@ -431,6 +431,22 @@ mod tests {
         let screen = render(&mut app, 80, MIN_HEIGHT_FOR_DETAILS - 1).join("\n");
         assert!(screen.contains("t0"), "{screen}");
         assert!(!screen.contains("title set by you"), "{screen}");
+    }
+
+    #[test]
+    fn the_keys_that_matter_stay_visible_on_an_80_column_terminal() {
+        let mut app = app_with(1);
+        let screen = render(&mut app, 80, 30);
+        let help = screen.last().unwrap();
+        for key in ["Enter resume", "^N new", "Esc quit"] {
+            assert!(help.contains(key), "{key} is cut off: {help:?}");
+        }
+        app.open_new();
+        let screen = render(&mut app, 80, 30);
+        let help = screen.last().unwrap();
+        for key in ["Esc cancels", "Tab completes"] {
+            assert!(help.contains(key), "{key} is cut off: {help:?}");
+        }
     }
 
     #[test]
