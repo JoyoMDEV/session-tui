@@ -455,6 +455,50 @@ fn list_cwd_takes_a_relative_path_from_the_current_directory() {
 }
 
 #[test]
+fn list_cwd_resolves_dot_dot_from_the_current_directory() {
+    let env = Env::new("list-cwd-dotdot");
+    let proj = env.dir.join("proj");
+    let sub = proj.join("sub");
+    fs::create_dir_all(&sub).unwrap();
+    let (proj, sub) = (proj.canonicalize().unwrap(), sub.canonicalize().unwrap());
+    env.write_sessions(json!([
+        {"id": "in-proj", "cwd": proj.display().to_string(),
+         "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"},
+        {"id": "elsewhere", "cwd": "/elsewhere",
+         "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"},
+    ]));
+    for arg in ["..", "../sub/..", "../../proj"] {
+        let out = env
+            .command(&["list", "--cwd", arg])
+            .current_dir(&sub)
+            .output()
+            .unwrap();
+        assert!(
+            stdout(&out).starts_with("in-proj "),
+            "--cwd {arg}: {}",
+            stdout(&out)
+        );
+        assert_eq!(stdout(&out).lines().count(), 1, "--cwd {arg}");
+    }
+}
+
+#[test]
+fn list_rejects_an_age_with_a_multi_byte_character_instead_of_panicking() {
+    let env = filtered_env("list-since-utf8");
+    for age in ["7é", "é", "7😀"] {
+        let out = env.run(&["list", "--since", age]);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "--since {age}: {}",
+            stderr(&out)
+        );
+        assert!(stderr(&out).contains("--since"), "{}", stderr(&out));
+        assert!(!stderr(&out).contains("panicked"), "{}", stderr(&out));
+    }
+}
+
+#[test]
 fn list_rejects_an_age_it_cannot_read() {
     let env = filtered_env("list-bad-since");
     let out = env.run(&["list", "--since", "soon"]);
