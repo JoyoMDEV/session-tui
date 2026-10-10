@@ -71,8 +71,9 @@ into ratatui's `TestBackend` and look at the text. Resuming replaces the process
 * `tests/cli.rs` runs the compiled binary with `HOME`, `CLAUDE_CONFIG_DIR` and `SESSIONS_FILE` in a
   temporary directory and checks output, exit status and files. It is the safety net for
   refactoring, because it does not know how the code is organised.
-* `tests/readme.rs` fails if a command is missing from the README, and `tests/plugin.rs` keeps the
-  plugin manifests and the hook in step with the crate.
+* `tests/readme.rs` fails if a command is missing from the README, `tests/docs.rs` fails on a
+  broken link between documentation pages or a page the index does not list, and `tests/plugin.rs`
+  keeps the plugin manifests and the hook in step with the crate.
 
 ## What is likely to change
 
