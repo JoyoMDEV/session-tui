@@ -13,7 +13,7 @@ the terminal browser.
 There are three ways in, and they share the same data:
 
 * **The hook** runs at every Claude Code session start and registers the session.
-* **The commands** (`title`, `tag`, `ticket`, `note`, `list`, `log`, `resume`, `prune`, `rm`, `import`,
+* **The commands** (`title`, `tag`, `ticket`, `note`, `list`, `log`, `resume`, `start`, `prune`, `rm`, `import`,
   `migrate-tickets`) are called by the agent, by you, or from scripts.
 * **The browser** lists, searches and edits the same sessions and resumes one.
 
@@ -27,7 +27,9 @@ All of them read and write `sessions.json`. Claude Code's transcripts are only e
 | `transcript` | Reading Claude Code's transcripts: import, generated title, branch, pull request, preview text | Write transcripts, or fail on a record it doesn't understand |
 | `tags`, `tickets` | The rules for topic tags and ticket keys: spelling, editing, search syntax, migration | Touch the file themselves |
 | `query` | Choosing sessions (the filters, the search box's matching) and the JSON view scripts read | Print or change anything |
-| `launch` | Replacing the process with `claude --resume`, for the browser and `resume` | Decide which session to resume |
+| `launch` | Replacing the process with `claude`, to resume a session or start one, for the browser and the commands | Decide which session to resume |
+| `preset` | The tickets and title handed from `start` to the hook of the new session in `$SESSIONS_PRESET` | Read or write the sessions file |
+| `paths` | Directories a person types: `~` and `$HOME`, and a check that the directory exists | Change the file system |
 | `hook` | The answer to `SessionStart` | Print anything but one JSON object on stdout |
 | `commands/` | One small command each, working on parsed arguments | Parse the command line |
 | `cli` | The clap definition of all commands | Decide what a command does |

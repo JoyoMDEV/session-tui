@@ -130,6 +130,7 @@ The agent calls these, but you can too.
 | `sessions list [filters] [--all] [--json]` | Print the entries, or only those that match every filter. Archived entries are left out unless you add `--all`. See [Filtering `list` and `log`](#filtering-list-and-log) |
 | `sessions log [filters] [--markdown]` | Print a timeline of the matching entries, newest first. See [Timeline with `log`](#timeline-with-log) |
 | `sessions resume [query] [filters] [--all] [--list]` | Resume the one session a query points to, without the browser. See [Resume from the shell](#resume-from-the-shell) |
+| `sessions start [--dir DIR] [--ticket KEY]... [--title TITLE] [message...]` | Start a new Claude Code session in `DIR` (default: the current directory), for the tickets and with a first message. See [Start a session](#start-a-session) |
 
 `--id` defaults to `$CLAUDE_SESSION_ID`, which the hook sets for the agent's shell.
 
@@ -178,6 +179,18 @@ alias cr='sessions resume'
 ```
 
 It resumes only when exactly one session matches (`#tag` and `ticket:KEY` words in the query match exactly). If several do, it lists them and exits with an error rather than guessing; if none does, or the transcript is gone, it says so. `--list` prints the matches without resuming, most recent first. Archived sessions are left out unless you add `--all`.
+
+#### Start a session
+
+`sessions start` starts Claude Code in a directory and tells the hook of the new session which tickets and title it is for, so the session is in the log with them from the first moment instead of when the agent gets round to recording them:
+
+```sh
+sessions start --dir ~/Code/app --ticket ABC-123 --title "Fix login redirect" fix the redirect after login
+```
+
+The directory must exist (`~` and `$HOME` are expanded, and the default is the current directory). The words after the options are the first message; start them with `--` if the message begins with a dash. The flags from `SESSIONS_CLAUDE_ARGS` are passed to `claude` first, as when resuming.
+
+The tickets and the title travel in the environment variable `SESSIONS_PRESET`, which Claude Code passes on to its hooks. That is how it behaved in version 2.1.296, when I tried it; it is not a documented promise and may change. The hook uses the preset only for a new session at startup, and tells the agent which tickets the session was started for. Without the hook (see [Set up the hook](#set-up-the-hook)) the session still starts, but nothing is recorded.
 
 ### Tags
 

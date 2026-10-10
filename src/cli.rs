@@ -68,6 +68,20 @@ pub enum Cmd {
     },
     /// Remove a session
     Rm { id: String },
+    /// Start a new Claude Code session in a directory, for tickets and with a first message
+    Start {
+        /// The directory to start in (default: the current one); `~` and `$HOME` are expanded
+        #[arg(long, value_name = "DIR")]
+        dir: Option<String>,
+        /// A ticket the session is for (repeatable); the hook records it
+        #[arg(long = "ticket", value_name = "KEY")]
+        tickets: Vec<String>,
+        /// The title of the session; the hook records it
+        #[arg(long)]
+        title: Option<String>,
+        /// The first message to Claude Code
+        prompt: Vec<String>,
+    },
     /// Move a finished session out of the default list; it stays searchable (see `list --all`)
     Archive { id: String },
     /// Bring an archived session back into the default list

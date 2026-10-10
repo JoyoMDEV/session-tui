@@ -16,8 +16,9 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/main.rs`, `src/lib.rs` | `main.rs` calls `sessions::run()`; `lib.rs` parses the command line and dispatches |
 | `src/cli.rs` | The clap definition of every command |
 | `src/hook.rs` | The `SessionStart` hook |
-| `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `log`, `resume`, `prune`, `rm`, `import`, `migrate-tickets` |
-| `src/launch.rs` | Replaces the process with `claude --resume`, for the browser and `sessions resume` |
+| `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `log`, `resume`, `start`, `prune`, `rm`, `import`, `migrate-tickets` |
+| `src/launch.rs` | Replaces the process with `claude` to resume or start a session, for the browser and the commands |
+| `src/preset.rs`, `src/paths.rs` | The tickets and title handed to the hook of a started session (`$SESSIONS_PRESET`); directories typed by a person |
 | `src/query.rs` | Which sessions the report commands keep (the `list`, `log` and `resume` filters, the browser's search) and the public JSON view |
 | `src/store.rs` | `sessions.json`: data model, locking, atomic writes, recovery from a corrupt file |
 | `src/transcript.rs` | Read-only access to Claude Code transcripts: import, title/branch/PR scan, preview text |
