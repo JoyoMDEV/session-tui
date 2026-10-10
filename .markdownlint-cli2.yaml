@@ -1,4 +1,4 @@
-# Run with: npx --yes markdownlint-cli2@0.23.3   (the version CI uses, see .github/workflows/ci.yml)
+# Run with: sh scripts/check.sh lint   (it pins the version of markdownlint-cli2 and runs the other lint checks too)
 config:
   default: true
   # Line length: the README and the docs keep a paragraph on one line, and tables are long.

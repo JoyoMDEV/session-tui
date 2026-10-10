@@ -36,6 +36,8 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
 | `scripts/wiki.sh`, `scripts/wiki*.awk` | Builds the wiki pages from `docs/` |
+| `scripts/check.sh`, `.githooks/` | The lint checks (CI) and the optional git hooks that call them |
+| `tests/hooks.rs` | Runs `scripts/check.sh` on commit messages and on staged files in a scratch repository |
 | `tests/wiki.rs` | Runs `scripts/wiki.sh` on examples and on the real `docs/` |
 | `.github/workflows/` | `ci.yml`, `release.yml`, `homebrew.yml`, `wiki.yml` |
 | `.markdownlint-cli2.yaml` | The Markdown lint: which files, which rules are off and why |
@@ -47,13 +49,17 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 claude plugin validate --strict .
-shellcheck -s sh install.sh scripts/formula.sh
+shellcheck -s sh install.sh scripts/*.sh .githooks/*
 npx --yes markdownlint-cli2@0.23.3
 ```
 
-CI runs formatting, clippy, shellcheck and the Markdown lint on Linux and the tests on Linux and macOS.
+`sh scripts/check.sh lint` runs the formatting, clippy, shellcheck and Markdown lint commands above
+and is what CI's lint job runs, so the commands and the Markdown lint version are defined there,
+in one place. It needs `shellcheck` and Node.
+
+CI runs formatting, clippy, shellcheck and the Markdown lint (`scripts/check.sh lint`) on Linux and the tests on Linux and macOS.
 The Markdown lint needs Node. Its rules and the files it covers are in `.markdownlint-cli2.yaml`; it
-covers `README.md`, `AGENTS.md` and `docs/`, not the pull request template. Rust 1.88 or newer, edition 2024.
+covers `README.md`, `AGENTS.md`, `docs/` and the skill files, not the pull request template. Rust 1.88 or newer, edition 2024.
 
 ## Working on the code
 
@@ -72,6 +78,12 @@ covers `README.md`, `AGENTS.md` and `docs/`, not the pull request template. Rust
 - Resuming uses `exec`, which is why the tool is Unix only.
 - Logic is unit-tested next to the code, and `App` in `tui.rs` can be tested without a terminal. To
   check how the TUI looks and feels, drive it in tmux against a temporary sessions file.
+- Git hooks are optional and off by default. `git config core.hooksPath .githooks` turns them on
+  (`git config --unset core.hooksPath` turns them off). `pre-commit` refuses a staged
+  `sessions.json`, transcript, `.env` or key file, whitespace errors and conflict markers, and
+  runs `cargo fmt --check`, `shellcheck` and the Markdown lint on what changed. `commit-msg`
+  checks the rules under "Commits". `pre-push` runs clippy and the tests. They call
+  `scripts/check.sh` and skip a check whose tool is missing; CI runs every check regardless.
 - After moving or renaming your checkout, run `cargo clean`. `tests/plugin.rs` embeds the manifest
   path at compile time, so a stale build looks for the old location.
 
