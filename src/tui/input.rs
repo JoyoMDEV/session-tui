@@ -125,6 +125,11 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                     app.show_untitled = !app.show_untitled;
                     app.clamp();
                 }
+                KeyCode::Char('a') if ctrl => {
+                    app.show_archived = !app.show_archived;
+                    app.clamp();
+                }
+                KeyCode::Char('d') if ctrl => app.toggle_archived(),
                 KeyCode::Char('l') if ctrl => {
                     app.only_here = !app.only_here;
                     app.clamp();

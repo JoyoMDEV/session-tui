@@ -73,7 +73,7 @@ fn non_empty(s: String) -> Result<String> {
 
 /// Applies `f` to the session with the given id (default `$CLAUDE_SESSION_ID`). An unknown id is
 /// an error, so a typo doesn't create an empty entry; `sessions import` registers older sessions.
-fn modify(id: Option<String>, f: impl FnOnce(&mut store::Session)) -> Result<()> {
+pub fn modify(id: Option<String>, f: impl FnOnce(&mut store::Session)) -> Result<()> {
     let id = id
         .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
         .context("no --id given and $CLAUDE_SESSION_ID is not set")?;

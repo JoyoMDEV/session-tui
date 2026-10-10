@@ -7,8 +7,8 @@ use crate::{commands, launch, store, transcript};
 use anyhow::{Result, bail};
 use std::io::Write;
 
-pub fn run(query: Vec<String>, args: FilterArgs, list: bool) -> Result<()> {
-    let filters = commands::filters(args)?;
+pub fn run(query: Vec<String>, args: FilterArgs, all: bool, list: bool) -> Result<()> {
+    let filters = commands::filters(args, all)?;
     let sessions = store::load()?;
     let matches = find(&sessions, &filters, &query.join(" "));
 

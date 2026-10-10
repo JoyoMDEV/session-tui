@@ -61,6 +61,12 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     } else {
         format!(" Sessions ({hidden} empty hidden)")
     };
+    let archived = app.sessions.iter().filter(|s| s.archived).count();
+    if app.show_archived {
+        search_title += " · archived shown";
+    } else if archived > 0 {
+        search_title += &format!(" · {archived} archived hidden");
+    }
     if app.only_here {
         search_title += " · this directory only";
     }
@@ -117,6 +123,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             if let Some(branch) = &s.branch {
                 spans.push(Span::raw(format!("  ⎇ {branch}")).dim());
             }
+            if s.archived {
+                spans.push(Span::raw("  archived").dim().italic());
+            }
             Line::from(spans).into()
         })
         .collect();
@@ -158,8 +167,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
                 TitleKind::Suggestion => "title cut from the first prompt",
                 TitleKind::Missing => "no title",
             };
+            let archived = if s.archived { "  ·  archived" } else { "" };
             format!(
-                "cwd:     {}\nid:      {}\ngit:     {git}\ntickets: {}\ntags:    {}\nnote:    {}\nfile:    {size}  ·  {title_from}",
+                "cwd:     {}\nid:      {}\ngit:     {git}\ntickets: {}\ntags:    {}\nnote:    {}\nfile:    {size}  ·  {title_from}{archived}",
                 s.cwd,
                 s.id,
                 if s.tickets.is_empty() {
@@ -191,7 +201,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
         Mode::Preview(..) => Line::from("".dim()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^V preview  ^O flags  Tab empty  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^V preview  ^O flags  Tab empty  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);

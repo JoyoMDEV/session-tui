@@ -25,6 +25,7 @@ to test whether a key exists.
 | `tags` | array of strings | Topic tags, lower case |
 | `note` | string or null | Your note |
 | `agent` | string | The coding agent that wrote the session, `claude-code` today |
+| `archived` | boolean | `true` for a session moved out of the default list with `sessions archive`. `list --json` includes archived sessions only with `--all` |
 | `created_at` | string | When `sessions` first saw the session, RFC 3339 in UTC |
 | `updated_at` | string | The last activity, RFC 3339 in UTC |
 
@@ -47,6 +48,7 @@ to test whether a key exists.
     ],
     "note": null,
     "agent": "claude-code",
+    "archived": false,
     "created_at": "2026-10-06T08:12:03.417365Z",
     "updated_at": "2026-10-06T09:40:11.002931Z"
   }

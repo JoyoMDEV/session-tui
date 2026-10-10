@@ -43,6 +43,7 @@ pub fn run() -> Result<()> {
             .unwrap_or_default(),
         query: String::new(),
         show_untitled: false,
+        show_archived: false,
         only_here: false,
         only_branch: None,
         mode: Mode::Browse,

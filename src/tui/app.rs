@@ -78,6 +78,8 @@ pub(super) struct App {
     pub(super) launch_dir: String,
     pub(super) query: String,
     pub(super) show_untitled: bool,
+    /// Whether archived sessions are listed too.
+    pub(super) show_archived: bool,
     pub(super) only_here: bool,
     /// Set while filtering to the branch that is checked out in `launch_dir`.
     pub(super) only_branch: Option<String>,
@@ -102,6 +104,7 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, s)| self.show_untitled || shown_title(s).0 != TitleKind::Missing)
+            .filter(|(_, s)| self.show_archived || !s.archived)
             .filter(|(_, s)| !self.only_here || in_dir(&s.cwd, &self.launch_dir))
             .filter(|(_, s)| {
                 self.only_branch
@@ -250,6 +253,21 @@ impl App {
         self.reload();
     }
 
+    /// Archives the selected session, or brings it back if it is archived already.
+    pub(super) fn toggle_archived(&mut self) {
+        let Some(i) = self.selected() else { return };
+        let (id, archived) = (self.sessions[i].id.clone(), !self.sessions[i].archived);
+        let res = store::update(|all| {
+            if let Some(s) = all.iter_mut().find(|s| s.id == id) {
+                s.archived = archived;
+            }
+        });
+        if let Err(e) = res {
+            self.status = format!("{e:#}");
+        }
+        self.reload();
+    }
+
     pub(super) fn launch(&mut self, i: usize, args: Vec<String>) -> Option<Launch> {
         let session = self.sessions[i].clone();
         if !self.resumable.contains(&session.id) {
@@ -279,6 +297,7 @@ pub(super) fn app_with(n: usize) -> App {
         launch_dir: String::new(),
         query: String::new(),
         show_untitled: false,
+        show_archived: false,
         only_here: false,
         only_branch: None,
         mode: Mode::Browse,
@@ -301,6 +320,20 @@ mod tests {
         assert!(app.status.starts_with("ABC-123 looks like a ticket key"));
         assert!(app.status.contains("^K"));
         assert!(app.sessions[0].tags.is_empty());
+    }
+
+    #[test]
+    fn archived_sessions_are_hidden_until_asked_for() {
+        let mut app = app_with(3);
+        app.sessions[1].archived = true;
+        assert_eq!(app.visible(), [0, 2]);
+        app.show_archived = true;
+        assert_eq!(app.visible(), [0, 1, 2]);
+        // The search still looks at archived sessions once they are shown.
+        app.query = "t1".into();
+        assert_eq!(app.visible(), [1]);
+        app.show_archived = false;
+        assert!(app.visible().is_empty());
     }
 
     #[test]

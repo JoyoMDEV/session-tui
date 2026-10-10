@@ -68,10 +68,17 @@ pub enum Cmd {
     },
     /// Remove a session
     Rm { id: String },
+    /// Move a finished session out of the default list; it stays searchable (see `list --all`)
+    Archive { id: String },
+    /// Bring an archived session back into the default list
+    Unarchive { id: String },
     /// Print sessions, all or only those that match every filter
     List {
         #[command(flatten)]
         filters: FilterArgs,
+        /// Include archived sessions
+        #[arg(long)]
+        all: bool,
         /// Print a JSON array (see docs/reference/list-json.md) instead of one line per session
         #[arg(long)]
         json: bool,
@@ -91,6 +98,9 @@ pub enum Cmd {
         query: Vec<String>,
         #[command(flatten)]
         filters: FilterArgs,
+        /// Include archived sessions
+        #[arg(long)]
+        all: bool,
         /// Show the matching sessions instead of resuming one
         #[arg(long)]
         list: bool,
