@@ -1,6 +1,6 @@
 //! Drawing: turns an `App` into ratatui widgets. Nothing here changes what is stored.
 
-use super::app::{App, Field, Mode, TitleKind, shown_title};
+use super::app::{App, Field, Mode, NewField, NewForm, TitleKind, shown_title};
 use crate::query::Searcher;
 use crate::query::pr_label;
 use crate::transcript;
@@ -20,6 +20,8 @@ use std::path::Path;
 const MIN_HEIGHT_FOR_DETAILS: u16 = 25;
 /// Tag suggestions shown next to the tag editor.
 const MAX_SUGGESTIONS: usize = 5;
+/// Directory suggestions shown under the directory field of the new session dialog.
+const MAX_NEW_SUGGESTIONS: usize = 5;
 /// Border plus seven lines of details.
 const DETAILS_HEIGHT: u16 = 9;
 
@@ -62,6 +64,79 @@ fn draw_tags(f: &mut Frame, rows: &[(String, usize)], state: &mut ListState, act
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .highlight_symbol("▶ ");
     f.render_stateful_widget(list, box_area, state);
+}
+
+/// `text`, or if it is longer than `room` characters its end behind an ellipsis: the end of a
+/// path or of something being typed is the part that matters.
+fn tail_fit(text: &str, room: usize) -> String {
+    if text.chars().count() <= room {
+        return text.to_string();
+    }
+    let tail: String = text.chars().rev().take(room.saturating_sub(1)).collect();
+    format!("…{}", tail.chars().rev().collect::<String>())
+}
+
+/// The new session dialog: a centered box with the four fields, the directories that could finish
+/// the one being typed, and the reason a start was refused.
+fn draw_new(f: &mut Frame, form: &NewForm) {
+    let area = f.area();
+    let width = area.width.min(90);
+    let label = 11;
+    let room = (width as usize).saturating_sub(label + 4).max(1);
+    let mut lines: Vec<Line> = vec![Line::from("")];
+    for field in NewField::ALL {
+        let value = form.value(field);
+        let cursor = if field == form.focus { "█" } else { "" };
+        let shown = tail_fit(value, room.saturating_sub(cursor.chars().count()));
+        let name = format!("{:<label$}", field.label());
+        let name = if field == form.focus {
+            name.bold()
+        } else {
+            name.dim()
+        };
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            name,
+            Span::raw(format!("{shown}{cursor}")),
+        ]));
+        if field == NewField::Dir {
+            for c in form.suggestions.iter().take(MAX_NEW_SUGGESTIONS) {
+                let mark = match (c.git, c.used) {
+                    (true, _) => "⎇ ",
+                    (false, true) => "· ",
+                    (false, false) => "  ",
+                };
+                let text = tail_fit(&c.text, room.saturating_sub(2));
+                lines.push(Line::from(format!("   {mark}{text}")).dim());
+            }
+            if form.suggestions.len() > MAX_NEW_SUGGESTIONS {
+                let more = form.suggestions.len() - MAX_NEW_SUGGESTIONS;
+                lines.push(Line::from(format!("     … {more} more")).dim());
+            }
+        }
+    }
+    lines.push(Line::from(""));
+    if let Some(why) = &form.error {
+        lines.push(Line::from(format!(" {}", tail_fit(why, room + label))).red());
+    } else {
+        lines.push(Line::from(" ⎇ git repository   · used before").dim());
+    }
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let box_area = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    f.render_widget(Clear, box_area);
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" New session "),
+        ),
+        box_area,
+    );
 }
 
 /// `1.5 MB`, `300 KB`, `12 B`.
@@ -254,6 +329,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             }
             Line::from(text)
         }
+        Mode::New(_) => Line::from(
+            "Tab completes the directory  ↑↓ Enter field  ^U clears  Enter in Title starts  Esc cancels".dim(),
+        ),
         Mode::Tags(..) => Line::from(
             "↑↓ select  Enter filters by the tag (again: removes the filter)  Esc closes".dim(),
         ),
@@ -261,7 +339,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
         Mode::Preview(..) => Line::from("".dim()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^V preview  ^O flags  Tab empty  ^G tags  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^N new  ^V preview  ^O flags  Tab empty  ^G tags  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);
@@ -306,6 +384,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     }
     if let Mode::Tags(rows, state) = &mut app.mode {
         draw_tags(f, rows, state, words.tags());
+    }
+    if let Mode::New(form) = &app.mode {
+        draw_new(f, form);
     }
 }
 
@@ -366,6 +447,88 @@ mod tests {
         assert!(
             screen.contains("tag repair"),
             "the filter shows in the title bar:\n{screen}"
+        );
+    }
+
+    #[test]
+    fn the_new_session_dialog_shows_the_fields_the_suggestions_and_the_help() {
+        let root = std::env::temp_dir().join(format!("sessions-draw-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Code/app/.git")).unwrap();
+        std::fs::create_dir_all(root.join("Code/api")).unwrap();
+        let root = root.canonicalize().unwrap();
+        let mut app = app_with(1);
+        app.launch_dir = format!("{}/Code/ap", root.display());
+        app.open_new();
+        let screen = render(&mut app, 100, 30).join("\n");
+        for want in [
+            "New session",
+            "Directory",
+            "Message",
+            "Tickets",
+            "Title",
+            "Tab completes the directory",
+        ] {
+            assert!(screen.contains(want), "{want} missing:\n{screen}");
+        }
+        let has = |marker: &str, tail: &str| {
+            screen
+                .lines()
+                .any(|l| l.contains(marker) && l.contains(tail))
+        };
+        assert!(
+            has("⎇ ", "Code/app/"),
+            "the repository is marked:\n{screen}"
+        );
+        assert!(
+            has("   ", "Code/api/") && !has("⎇ ", "Code/api/"),
+            "{screen}"
+        );
+    }
+
+    #[test]
+    fn the_new_session_dialog_shows_why_a_start_was_refused() {
+        let mut app = app_with(1);
+        app.launch_dir = "/no/such/place".into();
+        app.open_new();
+        if let Mode::New(form) = &mut app.mode {
+            form.focus = NewField::Title;
+        }
+        app.new_key(ratatui::crossterm::event::KeyCode::Enter, false);
+        let screen = render(&mut app, 100, 30).join("\n");
+        assert!(
+            screen.contains("No such directory: /no/such/place"),
+            "{screen}"
+        );
+    }
+
+    #[test]
+    fn a_long_error_in_the_dialog_keeps_the_end_of_the_path() {
+        let mut app = app_with(1);
+        app.launch_dir = format!("/{}end", "dir/".repeat(40));
+        app.open_new();
+        if let Mode::New(form) = &mut app.mode {
+            form.focus = NewField::Title;
+        }
+        app.new_key(ratatui::crossterm::event::KeyCode::Enter, false);
+        let screen = render(&mut app, 60, 30).join("\n");
+        assert!(screen.contains("…"), "{screen}");
+        assert!(
+            screen.contains("dir/end"),
+            "the end of the path is shown:\n{screen}"
+        );
+    }
+
+    #[test]
+    fn a_long_value_in_the_dialog_shows_its_end() {
+        let mut app = app_with(1);
+        app.launch_dir = format!("/{}", "a/".repeat(60));
+        app.open_new();
+        let screen = render(&mut app, 60, 30).join("\n");
+        assert!(screen.contains("…"), "{screen}");
+        assert!(
+            screen.contains("a/█"),
+            "the cursor stays visible:\n{screen}"
         );
     }
 

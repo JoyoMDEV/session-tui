@@ -84,8 +84,6 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                     KeyCode::Char('g') if ctrl => app.mode = Mode::Browse,
                     KeyCode::Up => select_step(state, len, -1),
                     KeyCode::Down => select_step(state, len, 1),
-                    KeyCode::Char('p') if ctrl => select_step(state, len, -1),
-                    KeyCode::Char('n') if ctrl => select_step(state, len, 1),
                     KeyCode::PageUp => select_step(state, len, -page),
                     KeyCode::PageDown => select_step(state, len, page),
                     KeyCode::Home => select_step(state, len, -(len as isize)),
@@ -101,6 +99,11 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                         }
                     }
                     _ => {}
+                }
+            }
+            Mode::New(_) => {
+                if let Some(launch) = app.new_key(key.code, ctrl) {
+                    return Ok(Some(launch));
                 }
             }
             Mode::Edit(field, buf) => match key.code {
@@ -161,8 +164,7 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                 KeyCode::PageDown => app.move_by(app.page as isize),
                 KeyCode::Home => app.list.select(Some(0)),
                 KeyCode::End => app.jump_to_end(),
-                KeyCode::Char('p') if ctrl => app.mv(-1),
-                KeyCode::Char('n') if ctrl => app.mv(1),
+                KeyCode::Char('n') if ctrl => app.open_new(),
                 KeyCode::Tab => {
                     app.show_untitled = !app.show_untitled;
                     app.clamp();

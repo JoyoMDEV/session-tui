@@ -2,12 +2,15 @@
 //! terminal, which is how it is tested.
 
 use super::Launch;
-use crate::launch::default_args;
+use crate::launch::{NewSession, default_args};
+use crate::paths::{self, Candidate};
+use crate::preset::Preset;
 use crate::query::{self, Searcher};
 use crate::store::{self, Session};
 use crate::{tags, tickets, transcript};
-use ratatui::widgets::ListState;
+use ratatui::{crossterm::event::KeyCode, widgets::ListState};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -39,6 +42,84 @@ pub(super) enum Mode {
     Preview(Vec<String>, usize),
     /// Every tag with its number of sessions, and the selected row.
     Tags(Vec<(String, usize)>, ListState),
+    /// The dialog that starts a new session.
+    New(NewForm),
+}
+
+/// The fields of the new session dialog, in the order the cursor visits them.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(super) enum NewField {
+    Dir,
+    Prompt,
+    Tickets,
+    Title,
+}
+
+impl NewField {
+    pub(super) const ALL: [NewField; 4] = [
+        NewField::Dir,
+        NewField::Prompt,
+        NewField::Tickets,
+        NewField::Title,
+    ];
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            NewField::Dir => "Directory",
+            NewField::Prompt => "Message",
+            NewField::Tickets => "Tickets",
+            NewField::Title => "Title",
+        }
+    }
+
+    fn index(self) -> usize {
+        Self::ALL.iter().position(|f| *f == self).unwrap_or(0)
+    }
+}
+
+/// What has been typed in the new session dialog.
+pub(super) struct NewForm {
+    pub(super) dir: String,
+    pub(super) prompt: String,
+    /// Space or comma separated, as in the ticket editor.
+    pub(super) tickets: String,
+    pub(super) title: String,
+    pub(super) focus: NewField,
+    /// Directories that could finish `dir`, for the line under the directory field.
+    pub(super) suggestions: Vec<Candidate>,
+    /// Directories sessions were started in, most recent first.
+    used: Vec<String>,
+    /// Why the session was not started.
+    pub(super) error: Option<String>,
+}
+
+impl NewForm {
+    pub(super) fn value(&self, field: NewField) -> &str {
+        match field {
+            NewField::Dir => &self.dir,
+            NewField::Prompt => &self.prompt,
+            NewField::Tickets => &self.tickets,
+            NewField::Title => &self.title,
+        }
+    }
+
+    fn value_mut(&mut self) -> &mut String {
+        match self.focus {
+            NewField::Dir => &mut self.dir,
+            NewField::Prompt => &mut self.prompt,
+            NewField::Tickets => &mut self.tickets,
+            NewField::Title => &mut self.title,
+        }
+    }
+
+    fn refresh_suggestions(&mut self) {
+        let home = home();
+        self.suggestions = paths::candidates(&self.dir, &self.used, home.as_deref());
+    }
+}
+
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
 }
 
 /// Where the title shown for a session comes from, in order of preference.
@@ -304,7 +385,107 @@ impl App {
                     .into();
             return None;
         }
-        Some(Launch { session, args })
+        Some(Launch::Resume { session, args })
+    }
+
+    /// Opens the new session dialog, with the directory the browser was started in.
+    pub(super) fn open_new(&mut self) {
+        let mut by_recency: Vec<&Session> = self.sessions.iter().collect();
+        by_recency.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+        let mut used: Vec<String> = Vec::new();
+        for s in by_recency {
+            if !s.cwd.is_empty() && !used.contains(&s.cwd) {
+                used.push(s.cwd.clone());
+            }
+        }
+        let dir = if self.launch_dir.is_empty() {
+            std::env::current_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
+        } else {
+            self.launch_dir.clone()
+        };
+        let mut form = NewForm {
+            dir,
+            prompt: String::new(),
+            tickets: String::new(),
+            title: String::new(),
+            focus: NewField::Dir,
+            suggestions: Vec::new(),
+            used,
+            error: None,
+        };
+        form.refresh_suggestions();
+        self.mode = Mode::New(form);
+    }
+
+    /// Handles a key in the new session dialog. `Tab` completes the directory, the arrows and
+    /// `Enter` move between the fields, `Enter` in the last one starts the session, and `Esc`
+    /// leaves the list as it was. Returns what to start, if anything.
+    pub(super) fn new_key(&mut self, code: KeyCode, ctrl: bool) -> Option<Launch> {
+        let Mode::New(form) = &mut self.mode else {
+            return None;
+        };
+        let step = |form: &mut NewForm, delta: isize| {
+            let next =
+                (form.focus.index() as isize + delta).clamp(0, NewField::ALL.len() as isize - 1);
+            form.focus = NewField::ALL[next as usize];
+        };
+        match code {
+            KeyCode::Esc => self.mode = Mode::Browse,
+            KeyCode::Tab if form.focus == NewField::Dir => {
+                form.dir = paths::complete(&form.dir, &form.suggestions);
+                form.refresh_suggestions();
+            }
+            KeyCode::Down => step(form, 1),
+            KeyCode::Up => step(form, -1),
+            KeyCode::Enter if form.focus != NewField::Title => step(form, 1),
+            KeyCode::Enter => return self.submit_new(),
+            KeyCode::Char('u') if ctrl => {
+                form.value_mut().clear();
+                form.error = None;
+                form.refresh_suggestions();
+            }
+            KeyCode::Backspace => {
+                form.value_mut().pop();
+                form.error = None;
+                form.refresh_suggestions();
+            }
+            KeyCode::Char(c) if !ctrl => {
+                form.value_mut().push(c);
+                form.error = None;
+                form.refresh_suggestions();
+            }
+            _ => {}
+        }
+        None
+    }
+
+    /// Checks the dialog and, if the directory exists, returns the session to start. Otherwise
+    /// the dialog stays open, with the reason and the cursor in the directory field.
+    fn submit_new(&mut self) -> Option<Launch> {
+        let Mode::New(form) = &mut self.mode else {
+            return None;
+        };
+        let dir = match paths::check_dir(&form.dir, home().as_deref()) {
+            Ok(dir) => dir,
+            Err(why) => {
+                form.error = Some(why);
+                form.focus = NewField::Dir;
+                return None;
+            }
+        };
+        let new = NewSession {
+            dir: dir.display().to_string(),
+            prompt: form.prompt.clone(),
+            preset: Preset::new(tickets::parse_list(&form.tickets), Some(form.title.clone())),
+        };
+        let args = default_args()
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        self.mode = Mode::Browse;
+        Some(Launch::New { new, args })
     }
 }
 
@@ -348,6 +529,194 @@ mod tests {
         assert!(app.status.starts_with("ABC-123 looks like a ticket key"));
         assert!(app.status.contains("^K"));
         assert!(app.sessions[0].tags.is_empty());
+    }
+
+    fn scratch_tree(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("sessions-new-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for dir in ["Code/app", "Code/api", "Code/Another Project", "Docs"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        root.canonicalize().unwrap()
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for c in text.chars() {
+            assert!(app.new_key(KeyCode::Char(c), false).is_none());
+        }
+    }
+
+    fn form(app: &App) -> &NewForm {
+        match &app.mode {
+            Mode::New(form) => form,
+            _ => panic!("the new session dialog is not open"),
+        }
+    }
+
+    #[test]
+    fn the_dialog_starts_in_the_launch_directory_and_suggests_used_directories_first() {
+        let root = scratch_tree("open");
+        let mut app = app_with(2);
+        app.launch_dir = root.join("Code").display().to_string();
+        app.sessions[0].cwd = root.join("Docs").display().to_string();
+        app.open_new();
+        let f = form(&app);
+        assert_eq!(f.dir, root.join("Code").display().to_string());
+        assert_eq!(f.focus, NewField::Dir);
+        assert!(f.error.is_none());
+        // Typing after the root lists what is below it, used directories first.
+        let mut app = app_with(2);
+        app.launch_dir = format!("{}/", root.display());
+        app.sessions[1].cwd = root.join("Docs").display().to_string();
+        app.open_new();
+        let found: Vec<_> = form(&app)
+            .suggestions
+            .iter()
+            .map(|c| c.text.clone())
+            .collect();
+        assert_eq!(found[0], format!("{}/Docs/", root.display()), "{found:?}");
+        assert!(form(&app).suggestions[0].used);
+    }
+
+    #[test]
+    fn tab_completes_the_directory_and_typing_narrows_the_suggestions() {
+        let root = scratch_tree("tab");
+        let mut app = app_with(1);
+        app.launch_dir = String::new();
+        app.open_new();
+        if let Mode::New(f) = &mut app.mode {
+            f.dir = format!("{}/Co", root.display());
+            f.refresh_suggestions();
+        }
+        assert!(app.new_key(KeyCode::Tab, false).is_none());
+        assert_eq!(form(&app).dir, format!("{}/Code/", root.display()));
+        type_text(&mut app, "An");
+        assert!(app.new_key(KeyCode::Tab, false).is_none());
+        assert_eq!(
+            form(&app).dir,
+            format!("{}/Code/Another Project/", root.display()),
+            "spaces are fine"
+        );
+        app.new_key(KeyCode::Backspace, false);
+        assert_eq!(
+            form(&app).dir,
+            format!("{}/Code/Another Project", root.display())
+        );
+    }
+
+    #[test]
+    fn enter_and_the_arrows_move_between_the_fields_and_enter_in_the_last_one_starts() {
+        let root = scratch_tree("fields");
+        let mut app = app_with(1);
+        app.launch_dir = root.display().to_string();
+        app.open_new();
+        assert!(app.new_key(KeyCode::Enter, false).is_none());
+        assert_eq!(form(&app).focus, NewField::Prompt);
+        type_text(&mut app, "fix the login");
+        app.new_key(KeyCode::Down, false);
+        assert_eq!(form(&app).focus, NewField::Tickets);
+        type_text(&mut app, "ABC-1, ABC-2");
+        app.new_key(KeyCode::Up, false);
+        app.new_key(KeyCode::Down, false);
+        app.new_key(KeyCode::Enter, false);
+        assert_eq!(form(&app).focus, NewField::Title);
+        type_text(&mut app, "Fix login");
+        // Tab outside the directory field does nothing.
+        assert!(app.new_key(KeyCode::Tab, false).is_none());
+        assert_eq!(form(&app).title, "Fix login");
+
+        let Some(Launch::New { new, .. }) = app.new_key(KeyCode::Enter, false) else {
+            panic!("the session was not started");
+        };
+        assert_eq!(new.dir, root.display().to_string());
+        assert_eq!(new.prompt, "fix the login");
+        assert_eq!(
+            new.preset,
+            Preset::new(
+                vec!["ABC-1".into(), "ABC-2".into()],
+                Some("Fix login".into())
+            )
+        );
+        assert!(matches!(app.mode, Mode::Browse));
+    }
+
+    #[test]
+    fn a_directory_that_does_not_exist_keeps_the_dialog_open_with_the_reason() {
+        let root = scratch_tree("missing");
+        let mut app = app_with(1);
+        app.launch_dir = format!("{}/nope", root.display());
+        app.open_new();
+        for _ in 0..4 {
+            assert!(app.new_key(KeyCode::Enter, false).is_none());
+        }
+        let f = form(&app);
+        assert_eq!(
+            f.error.as_deref(),
+            Some(format!("No such directory: {}/nope", root.display()).as_str())
+        );
+        assert_eq!(
+            f.focus,
+            NewField::Dir,
+            "the cursor goes to the field to fix"
+        );
+        // Typing clears the message, and a good directory then starts.
+        app.new_key(KeyCode::Backspace, false);
+        assert!(form(&app).error.is_none());
+        if let Mode::New(f) = &mut app.mode {
+            f.dir = root.join("Docs").display().to_string();
+            f.focus = NewField::Title;
+        }
+        assert!(matches!(
+            app.new_key(KeyCode::Enter, false),
+            Some(Launch::New { .. })
+        ));
+    }
+
+    #[test]
+    fn ctrl_u_clears_the_field_with_the_cursor() {
+        let root = scratch_tree("clear");
+        let mut app = app_with(1);
+        app.launch_dir = root.display().to_string();
+        app.open_new();
+        type_text(&mut app, "/more");
+        assert!(app.new_key(KeyCode::Char('u'), true).is_none());
+        assert_eq!(form(&app).dir, "");
+        assert!(form(&app).suggestions.is_empty());
+        app.new_key(KeyCode::Enter, false);
+        type_text(&mut app, "message");
+        app.new_key(KeyCode::Char('u'), true);
+        assert_eq!(form(&app).prompt, "");
+        assert_eq!(form(&app).dir, "", "only the field with the cursor");
+    }
+
+    #[test]
+    fn escape_leaves_the_list_as_it_was() {
+        let mut app = app_with(3);
+        app.query = "t1".into();
+        let before = app.visible();
+        app.open_new();
+        type_text(&mut app, "x");
+        assert!(app.new_key(KeyCode::Esc, false).is_none());
+        assert!(matches!(app.mode, Mode::Browse));
+        assert_eq!(app.query, "t1");
+        assert_eq!(app.visible(), before);
+    }
+
+    #[test]
+    fn a_blank_title_and_no_tickets_mean_no_preset() {
+        let root = scratch_tree("blank");
+        let mut app = app_with(1);
+        app.launch_dir = root.display().to_string();
+        app.open_new();
+        if let Mode::New(f) = &mut app.mode {
+            f.focus = NewField::Title;
+            f.title = "   ".into();
+        }
+        let Some(Launch::New { new, .. }) = app.new_key(KeyCode::Enter, false) else {
+            panic!("not started");
+        };
+        assert!(new.preset.is_empty());
+        assert!(new.prompt.is_empty());
     }
 
     fn tag_rows(app: &App) -> Vec<(String, usize)> {

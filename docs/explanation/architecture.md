@@ -34,7 +34,7 @@ All of them read and write `sessions.json`. Claude Code's transcripts are only e
 | `commands/` | One small command each, working on parsed arguments | Parse the command line |
 | `cli` | The clap definition of all commands | Decide what a command does |
 | `setup`, `doctor` | `setup` merges the hook into Claude Code's `settings.json`; `doctor` checks the install | Touch a `settings.json` that isn't valid JSON (`setup`), or change anything (`doctor`) |
-| `tui/` | The browser: `app` (state and edits), `input` (keys and mouse), `draw` (rendering) | Change state while drawing, except the page size that paging needs |
+| `tui/` | The browser: `app` (state and edits, including the new session dialog), `input` (keys and mouse), `draw` (rendering) | Change state while drawing, except the page size that paging needs |
 
 Dependencies only point one way: `commands`, `hook` and `tui` use `store`, `transcript`, `tags`
 and `tickets`, and none of those four uses `commands`, `hook`, `tui` or `cli`.
