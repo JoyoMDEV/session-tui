@@ -1,11 +1,11 @@
 //! `resume`: resume the session a query points to, without the browser.
 
 use crate::cli::FilterArgs;
+use crate::output::say;
 use crate::query::{Filters, Searcher};
 use crate::store::Session;
 use crate::{commands, launch, store, transcript};
 use anyhow::{Result, bail};
-use std::io::Write;
 
 pub fn run(query: Vec<String>, args: FilterArgs, all: bool, list: bool) -> Result<()> {
     let filters = commands::filters(args, all)?;
@@ -13,10 +13,9 @@ pub fn run(query: Vec<String>, args: FilterArgs, all: bool, list: bool) -> Resul
     let matches = find(&sessions, &filters, &query.join(" "));
 
     if list {
-        let mut out = std::io::stdout().lock();
         for s in matches {
             // A closed pipe ends the output, as for `list`.
-            if writeln!(out, "{}", commands::list::text_line(s)).is_err() {
+            if !say!("{}", commands::list::text_line(s)) {
                 break;
             }
         }
