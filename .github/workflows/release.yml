@@ -77,6 +77,15 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
+  # Publishes the docs of this tag to the wiki. Independent of the formula.
+  wiki:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/wiki.yml
+    with:
+      ref: ${{ github.ref_name }}
+
   # Needs the release to exist, because the formula points at its assets.
   homebrew:
     needs: release

@@ -34,7 +34,9 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
-| `.github/workflows/` | `ci.yml`, `release.yml`, `homebrew.yml` |
+| `scripts/wiki.sh`, `scripts/wiki*.awk` | Builds the wiki pages from `docs/` |
+| `tests/wiki.rs` | Runs `scripts/wiki.sh` on examples and on the real `docs/` |
+| `.github/workflows/` | `ci.yml`, `release.yml`, `homebrew.yml`, `wiki.yml` |
 | `.markdownlint-cli2.yaml` | The Markdown lint: which files, which rules are off and why |
 
 ## Build, test, lint
@@ -83,8 +85,8 @@ covers `README.md`, `AGENTS.md` and `docs/`, not the pull request template. Rust
   `docs/explanation/` and `docs/how-to/`, one kind per page. How-tos for users and the tutorial
   stay in the README; `docs/how-to/` is for tasks only maintainers do, such as making a release.
 - `docs/Home.md` is the index, written by hand and organised by those four kinds. Link every new
-  page from it. A wiki generated from `docs/` on release is planned (#43) and will build its
-  sidebar from `Home.md`.
+  page from it. The wiki is generated from `docs/` on release and builds its sidebar from
+  `Home.md`; edit `docs/`, never the wiki (see `docs/how-to/publish-the-wiki.md`).
   `tests/docs.rs` fails on a broken relative link or heading anchor and on a page that `Home.md`
   does not link. Write links between pages as relative Markdown links, and link the README for the
   tutorial and user how-tos.
