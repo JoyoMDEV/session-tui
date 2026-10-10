@@ -31,6 +31,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `tests/readme.rs` | Keeps the README command list in step with `sessions --help` |
 | `tests/docs.rs` | Checks that links in the Markdown files resolve and that `docs/Home.md` links every page in `docs/` |
 | `docs/` | `Home.md` (the index), `reference/`, `explanation/`, `how-to/` (maintainer tasks) and `adr/` |
+| `.claude/skills/` | Project skills for maintainers, not part of the plugin. `pre-release/` is the check before a release (`/pre-release <version>`) |
 | `.claude-plugin/`, `hooks/` | Claude Code plugin and marketplace (the repo is its own marketplace) |
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
