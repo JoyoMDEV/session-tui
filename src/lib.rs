@@ -1,12 +1,15 @@
 //! The `sessions` program as a library. `main.rs` only calls [`run`]; this file parses the command
 //! line and hands each command to the module that implements it. Output that may be piped goes
-//! through `writeln!`, never `println!`.
+//! through `output`, never `println!`, which clippy denies.
+
+#![deny(clippy::print_stdout)]
 
 mod cli;
 mod commands;
 mod doctor;
 mod hook;
 mod launch;
+mod output;
 mod paths;
 mod preset;
 mod query;
@@ -21,13 +24,30 @@ use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Cmd};
 use commands::{archive, edit, import, list, log, migrate_tickets, prune, resume, rm, start};
+use std::process::ExitCode;
 
-/// Parses the command line and runs the command; with none given, starts the browser.
-pub fn run() -> Result<()> {
-    match Cli::parse().cmd {
+/// Parses the command line and runs the command; with none given, starts the browser. The exit
+/// status is success unless the command is `doctor` and a check failed; an error is reported by
+/// `main` with status 1.
+pub fn run() -> Result<ExitCode> {
+    let cmd = Cli::parse().cmd;
+    if matches!(cmd, Some(Cmd::Doctor)) {
+        return Ok(if doctor::run()? {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        });
+    }
+    dispatch(cmd)?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn dispatch(cmd: Option<Cmd>) -> Result<()> {
+    match cmd {
         None => tui::run(),
         Some(Cmd::Setup { force }) => setup::run(force),
-        Some(Cmd::Doctor) => doctor::run(),
+        // `run` handles `doctor` before it gets here, because it has an exit status of its own.
+        Some(Cmd::Doctor) => doctor::run().map(|_| ()),
         Some(Cmd::Hook) => hook::run(),
         Some(Cmd::Title { id, title }) => edit::title(id, title),
         Some(Cmd::Ticket { id, remove, keys }) => edit::ticket(id, remove, keys),

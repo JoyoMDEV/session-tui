@@ -56,20 +56,23 @@ fn is_default_agent(agent: &str) -> bool {
     agent == DEFAULT_AGENT
 }
 
-/// Claude Code's config dir: `$CLAUDE_CONFIG_DIR`, otherwise `~/.claude`.
-pub fn claude_dir() -> PathBuf {
-    std::env::var_os("CLAUDE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("HOME").expect("HOME not set")).join(".claude")
-        })
+/// Claude Code's config dir: `$CLAUDE_CONFIG_DIR`, otherwise `~/.claude`. An error if neither it
+/// nor `$HOME` is set, because there is no place to look for it.
+pub fn claude_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+    let home = std::env::var_os("HOME")
+        .context("HOME is not set, and neither is CLAUDE_CONFIG_DIR (or SESSIONS_FILE)")?;
+    Ok(PathBuf::from(home).join(".claude"))
 }
 
 /// `$SESSIONS_FILE`, otherwise `sessions.json` in the Claude config dir.
-pub fn path() -> PathBuf {
-    std::env::var_os("SESSIONS_FILE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| claude_dir().join("sessions.json"))
+pub fn path() -> Result<PathBuf> {
+    match std::env::var_os("SESSIONS_FILE") {
+        Some(file) => Ok(PathBuf::from(file)),
+        None => Ok(claude_dir()?.join("sessions.json")),
+    }
 }
 
 /// The outer `Result` is I/O, the inner one is a parse error of the file content.
@@ -84,7 +87,7 @@ fn read_raw(path: &Path) -> Result<Result<Vec<Session>, serde_json::Error>> {
 
 /// Reads without locking; writers replace the file atomically, so this never sees a partial write.
 pub fn load() -> Result<Vec<Session>> {
-    let path = path();
+    let path = path()?;
     read_raw(&path)?.map_err(|e| {
         anyhow::anyhow!(
             "{} is not valid JSON ({e}). Fix it by hand, or run any write command \
@@ -96,7 +99,7 @@ pub fn load() -> Result<Vec<Session>> {
 
 /// Locks, loads, applies `f`, and atomically writes the result back.
 pub fn update<T>(f: impl FnOnce(&mut Vec<Session>) -> T) -> Result<T> {
-    update_at(&path(), f)
+    update_at(&path()?, f)
 }
 
 fn update_at<T>(path: &Path, f: impl FnOnce(&mut Vec<Session>) -> T) -> Result<T> {

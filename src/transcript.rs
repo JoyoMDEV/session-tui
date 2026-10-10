@@ -24,7 +24,11 @@ pub struct Info {
 }
 
 fn project_dirs() -> Vec<PathBuf> {
-    fs::read_dir(store::claude_dir().join("projects"))
+    // Without a config dir there are no transcripts to find, which is less information, not an error.
+    let Ok(claude_dir) = store::claude_dir() else {
+        return Vec::new();
+    };
+    fs::read_dir(claude_dir.join("projects"))
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .map(|e| e.path())
@@ -89,7 +93,9 @@ fn prompt_text(v: &Value) -> Option<String> {
 pub fn read_info(path: &Path) -> Result<Info> {
     let mut info = Info::default();
     for line in BufReader::new(File::open(path)?).lines().take(MAX_LINES) {
-        let Ok(v) = serde_json::from_str::<Value>(&line?) else {
+        // A line that cannot be read or parsed is skipped, as in `scan_meta` and `preview`.
+        let Ok(line) = line else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
         if info.cwd.is_none() {
@@ -513,6 +519,23 @@ mod tests {
         let p = write_transcript("garbage", &["not json", r#"{"type":"mode"}"#]);
         let info = read_info(&p).unwrap();
         assert!(info.first_prompt.is_none() && info.cwd.is_none());
+        let _ = fs::remove_file(p);
+    }
+
+    #[test]
+    fn read_info_skips_a_line_that_is_not_valid_utf8() {
+        let p = std::env::temp_dir().join(format!("sessions-tr-{}-utf8.jsonl", std::process::id()));
+        let mut f = File::create(&p).unwrap();
+        writeln!(f, r#"{{"cwd":"/w","timestamp":"2026-10-01T10:00:00Z"}}"#).unwrap();
+        f.write_all(b"\xff\xfe not utf-8\n").unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"Fix the login"}}}}"#
+        )
+        .unwrap();
+        let info = read_info(&p).unwrap();
+        assert_eq!(info.cwd.as_deref(), Some("/w"));
+        assert_eq!(info.first_prompt.as_deref(), Some("Fix the login"));
         let _ = fs::remove_file(p);
     }
 }

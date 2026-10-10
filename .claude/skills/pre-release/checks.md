@@ -21,9 +21,10 @@ contradict, quote both and say which one is probably wrong; do not decide silent
 
 - `sessions.json` is written only through `store::update`. Search the non-test code for
   `fs::write`, `File::create`, `fs::rename`, `OpenOptions` and check each one.
-- Output that may be piped uses `writeln!` with the error handled. List every `println!`, `print!`
-  and `eprintln!` outside tests, and judge each: can the output be long or piped? If the rule and
-  the practice disagree, report that either the code or the rule's wording should change.
+- Stdout goes through `output` (`say!`, `text`), and `#![deny(clippy::print_stdout)]` in `lib.rs`
+  enforces it: look for a removed deny, an `#[allow(clippy::print_stdout)]`, or output written
+  with `write!` to `std::io::stdout()` outside `output.rs` whose error is ignored or unwrapped.
+  `eprintln!` for diagnostics is fine.
 - Transcripts are parsed tolerantly: in `transcript.rs`, `doctor.rs` and anything that reads
   Claude Code's files, look for `unwrap`, `expect`, indexing and `?` on a record that Claude Code
   owns. A missing record must mean less information, not an error.

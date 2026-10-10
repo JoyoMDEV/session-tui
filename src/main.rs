@@ -1,5 +1,7 @@
 //! The `sessions` binary. All behavior lives in the library crate.
 
-fn main() -> anyhow::Result<()> {
+use std::process::ExitCode;
+
+fn main() -> anyhow::Result<ExitCode> {
     sessions::run()
 }

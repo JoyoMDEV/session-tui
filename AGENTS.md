@@ -17,6 +17,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `src/cli.rs` | The clap definition of every command |
 | `src/hook.rs` | The `SessionStart` hook |
 | `src/commands/` | `title`, `ticket`, `tag`, `note` (`edit.rs`), `list`, `log`, `resume`, `start`, `prune`, `rm`, `import`, `migrate-tickets` |
+| `src/output.rs` | Stdout that survives a closed pipe: `say!` and `text`; `println!` is denied by clippy |
 | `src/launch.rs` | Replaces the process with `claude` to resume or start a session, for the browser and the commands |
 | `src/preset.rs`, `src/paths.rs` | The tickets and title handed to the hook of a started session (`$SESSIONS_PRESET`); directories typed by a person |
 | `src/query.rs` | Which sessions the report commands keep (the `list`, `log` and `resume` filters, the browser's search) and the public JSON view |
@@ -74,8 +75,11 @@ covers `README.md`, `AGENTS.md`, `docs/` and the skill files, not the pull reque
 - All writes to `sessions.json` go through `store::update` (exclusive lock, atomic replace).
 - Edits to the user's `settings.json` keep the key order, leave a backup, and never touch a file that
   isn't valid JSON.
-- Use `writeln!` and handle the error for output that may be piped. `println!` panics on a closed
-  pipe, as in `sessions list | head`.
+- Print to stdout only through `output` (`say!` and `text`). `println!` panics on a closed pipe, as
+  in `sessions list | head`, so clippy denies it and `print!`; `output` ends quietly instead and
+  reports it, so a loop can stop. Diagnostics go to stderr with `eprintln!`.
+- A missing environment variable (`HOME`, say) is an error with a message, never a panic, and the
+  hook reports a problem on stderr and still prints its JSON.
 - Resuming uses `exec`, which is why the tool is Unix only.
 - Logic is unit-tested next to the code, and `App` in `tui.rs` can be tested without a terminal. To
   check how the TUI looks and feels, drive it in tmux against a temporary sessions file.

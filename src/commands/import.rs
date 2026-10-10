@@ -1,13 +1,16 @@
 //! `import`: register Claude Code transcripts that aren't known yet.
 
+use crate::output::say;
 use crate::transcript;
 use anyhow::Result;
 
 pub fn run() -> Result<()> {
     let st = transcript::import()?;
-    println!(
+    say!(
         "{} added, {} suggestions filled, {} empty transcripts skipped",
-        st.added, st.updated, st.skipped_empty
+        st.added,
+        st.updated,
+        st.skipped_empty
     );
     Ok(())
 }
