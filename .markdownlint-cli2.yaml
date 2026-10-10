@@ -1,0 +1,9 @@
+# Run with: npx --yes markdownlint-cli2@0.23.3   (the version CI uses, see .github/workflows/ci.yml)
+config:
+  default: true
+  # Line length: the README and the docs keep a paragraph on one line, and tables are long.
+  MD013: false
+globs:
+  - "README.md"
+  - "AGENTS.md"
+  - "docs/**/*.md"

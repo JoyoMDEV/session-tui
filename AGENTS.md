@@ -35,6 +35,7 @@ directory. Unix only (macOS, Linux). The README is the user documentation.
 | `install.sh` | Release installer |
 | `scripts/formula.sh` | Generates the Homebrew formula for a release |
 | `.github/workflows/` | `ci.yml`, `release.yml`, `homebrew.yml` |
+| `.markdownlint-cli2.yaml` | The Markdown lint: which files, which rules are off and why |
 
 ## Build, test, lint
 
@@ -44,9 +45,12 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 claude plugin validate --strict .
 shellcheck -s sh install.sh scripts/formula.sh
+npx --yes markdownlint-cli2@0.23.3
 ```
 
-CI runs formatting, clippy and shellcheck on Linux and the tests on Linux and macOS. Rust 1.88 or newer, edition 2024.
+CI runs formatting, clippy, shellcheck and the Markdown lint on Linux and the tests on Linux and macOS.
+The Markdown lint needs Node. Its rules and the files it covers are in `.markdownlint-cli2.yaml`; it
+covers `README.md`, `AGENTS.md` and `docs/`, not the pull request template. Rust 1.88 or newer, edition 2024.
 
 ## Working on the code
 
