@@ -1,24 +1,68 @@
 //! Drawing: turns an `App` into ratatui widgets. Nothing here changes what is stored.
 
-use super::app::{App, Mode, TitleKind, shown_title};
+use super::app::{App, Field, Mode, TitleKind, shown_title};
+use crate::query::Searcher;
 use crate::query::pr_label;
-use crate::{tickets, transcript};
+use crate::transcript;
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState,
+        Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+        ScrollbarOrientation, ScrollbarState,
     },
 };
 use std::path::Path;
 
 /// Below this terminal height the details pane is dropped to leave room for the list.
 const MIN_HEIGHT_FOR_DETAILS: u16 = 25;
+/// Tag suggestions shown next to the tag editor.
+const MAX_SUGGESTIONS: usize = 5;
 /// Border plus seven lines of details.
 const DETAILS_HEIGHT: u16 = 9;
+
+/// The tag view: a centered box over the list with every tag and its number of sessions. A tag
+/// that is already a `#tag` word in the search box carries a check mark.
+fn draw_tags(f: &mut Frame, rows: &[(String, usize)], state: &mut ListState, active: &[String]) {
+    let area = f.area();
+    let width = area.width.min(54);
+    let height = (rows.len().max(1) as u16 + 2).clamp(5, area.height.saturating_sub(2).max(5));
+    let box_area = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height: height.min(area.height),
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" Tags ({}) ", rows.len()));
+    f.render_widget(Clear, box_area);
+    if rows.is_empty() {
+        f.render_widget(
+            Paragraph::new("No tags yet. ^T adds some to a session.").block(block),
+            box_area,
+        );
+        return;
+    }
+    let items: Vec<ListItem> = rows
+        .iter()
+        .map(|(tag, n)| {
+            let mark = if active.contains(tag) { "✓ " } else { "  " };
+            Line::from(vec![
+                Span::raw(format!("{mark}{tag}")),
+                Span::raw(format!("  ({n})")).dim(),
+            ])
+            .into()
+        })
+        .collect();
+    let list = List::new(items)
+        .block(block)
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("▶ ");
+    f.render_stateful_widget(list, box_area, state);
+}
 
 /// `1.5 MB`, `300 KB`, `12 B`.
 fn human_size(bytes: u64) -> String {
@@ -73,9 +117,12 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     if let Some(branch) = &app.only_branch {
         search_title += &format!(" · branch {branch}");
     }
-    let wanted = tickets::parse_query(&app.query).1;
-    if !wanted.is_empty() {
-        search_title += &format!(" · ticket {}", wanted.join(", "));
+    let words = Searcher::new(&app.query);
+    if !words.tickets().is_empty() {
+        search_title += &format!(" · ticket {}", words.tickets().join(", "));
+    }
+    if !words.tags().is_empty() {
+        search_title += &format!(" · tag {}", words.tags().join(", "));
     }
     search_title.push(' ');
     f.render_widget(
@@ -196,12 +243,25 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     }
 
     let help_line = match &app.mode {
-        Mode::Edit(field, buf) => Line::from(format!("{}: {buf}█   (Enter to confirm, Esc to cancel)", field.label())),
+        Mode::Edit(field, buf) => {
+            let mut text = format!("{}: {buf}█   (Enter to confirm, Esc to cancel)", field.label());
+            if matches!(field, Field::Tags) {
+                let found = app.tag_suggestions(buf);
+                if !found.is_empty() {
+                    let shown: Vec<_> = found.iter().take(MAX_SUGGESTIONS).cloned().collect();
+                    text += &format!("  Tab: {}", shown.join(" "));
+                }
+            }
+            Line::from(text)
+        }
+        Mode::Tags(..) => Line::from(
+            "↑↓ select  Enter filters by the tag (again: removes the filter)  Esc closes".dim(),
+        ),
         Mode::ConfirmDelete => Line::from("Really delete this session? (y = yes, anything else cancels)".red()),
         Mode::Preview(..) => Line::from("".dim()),
         Mode::Browse if !app.status.is_empty() => Line::from(app.status.clone().red()),
         Mode::Browse => Line::from(
-            "Enter resume  ^V preview  ^O flags  Tab empty  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
+            "Enter resume  ^V preview  ^O flags  Tab empty  ^G tags  ^A archived  ^D archive  ^L dir  ^B branch  ^R title  ^T tags  ^K tickets  ^E note  ^X delete  Esc quit".dim(),
         ),
     };
     f.render_widget(Paragraph::new(help_line), help);
@@ -243,6 +303,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     }
     if previewing {
         app.page = preview_page;
+    }
+    if let Mode::Tags(rows, state) = &mut app.mode {
+        draw_tags(f, rows, state, words.tags());
     }
 }
 
@@ -287,6 +350,40 @@ mod tests {
         let screen = render(&mut app, 80, MIN_HEIGHT_FOR_DETAILS - 1).join("\n");
         assert!(screen.contains("t0"), "{screen}");
         assert!(!screen.contains("title set by you"), "{screen}");
+    }
+
+    #[test]
+    fn the_tag_view_lists_tags_with_counts_and_marks_the_active_filter() {
+        let mut app = app_with(3);
+        app.sessions[0].tags = vec!["auth".into(), "repair".into()];
+        app.sessions[1].tags = vec!["auth".into()];
+        app.query = "#repair ".into();
+        app.open_tags();
+        let screen = render(&mut app, 80, 30).join("\n");
+        assert!(screen.contains("auth  (2)"), "{screen}");
+        assert!(screen.contains("✓ repair  (1)"), "{screen}");
+        assert!(screen.contains("Tags (2)"), "{screen}");
+        assert!(
+            screen.contains("tag repair"),
+            "the filter shows in the title bar:\n{screen}"
+        );
+    }
+
+    #[test]
+    fn the_tag_view_says_so_when_there_are_no_tags() {
+        let mut app = app_with(2);
+        app.open_tags();
+        let screen = render(&mut app, 80, 30).join("\n");
+        assert!(screen.contains("No tags yet"), "{screen}");
+    }
+
+    #[test]
+    fn the_tag_editor_offers_existing_tags() {
+        let mut app = app_with(2);
+        app.sessions[0].tags = vec!["observability".into(), "observer".into()];
+        app.mode = Mode::Edit(Field::Tags, "obs".into());
+        let screen = render(&mut app, 100, 30).join("\n");
+        assert!(screen.contains("Tab: observability observer"), "{screen}");
     }
 
     #[test]

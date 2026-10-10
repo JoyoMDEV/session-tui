@@ -6,10 +6,12 @@ use super::app::{App, Field, Mode};
 use super::draw::draw;
 use crate::launch::default_args;
 use crate::store;
+use crate::tags;
 use anyhow::Result;
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind},
+    widgets::ListState,
 };
 
 /// Rows scrolled per mouse wheel notch.
@@ -17,6 +19,15 @@ const WHEEL_STEP: isize = 3;
 
 /// Moves a scroll offset by `delta`. The last page stays full instead of scrolling the final
 /// line to the top.
+/// Moves the selection of a list by `delta` rows without leaving it.
+fn select_step(state: &mut ListState, len: usize, delta: isize) {
+    if len == 0 {
+        return;
+    }
+    let cur = state.selected().unwrap_or(0) as isize;
+    state.select(Some((cur + delta).clamp(0, len as isize - 1) as usize));
+}
+
 fn scroll_by(cur: usize, delta: isize, len: usize, page: usize) -> usize {
     (cur as isize + delta).clamp(0, len.saturating_sub(page) as isize) as usize
 }
@@ -37,6 +48,7 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                     Mode::Preview(lines, scroll) => {
                         *scroll = scroll_by(*scroll, delta, lines.len(), app.page)
                     }
+                    Mode::Tags(rows, state) => select_step(state, rows.len(), delta),
                     _ => {}
                 }
                 continue;
@@ -65,8 +77,38 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                     _ => {}
                 }
             }
+            Mode::Tags(rows, state) => {
+                let (len, page) = (rows.len(), app.page as isize);
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => app.mode = Mode::Browse,
+                    KeyCode::Char('g') if ctrl => app.mode = Mode::Browse,
+                    KeyCode::Up => select_step(state, len, -1),
+                    KeyCode::Down => select_step(state, len, 1),
+                    KeyCode::Char('p') if ctrl => select_step(state, len, -1),
+                    KeyCode::Char('n') if ctrl => select_step(state, len, 1),
+                    KeyCode::PageUp => select_step(state, len, -page),
+                    KeyCode::PageDown => select_step(state, len, page),
+                    KeyCode::Home => select_step(state, len, -(len as isize)),
+                    KeyCode::End => select_step(state, len, len as isize),
+                    KeyCode::Enter => {
+                        let tag = state
+                            .selected()
+                            .and_then(|i| rows.get(i))
+                            .map(|(tag, _)| tag.clone());
+                        app.mode = Mode::Browse;
+                        if let Some(tag) = tag {
+                            app.toggle_tag_filter(&tag);
+                        }
+                    }
+                    _ => {}
+                }
+            }
             Mode::Edit(field, buf) => match key.code {
                 KeyCode::Esc => app.mode = Mode::Browse,
+                KeyCode::Tab if matches!(field, Field::Tags) => {
+                    let found = tags::suggestions(&tags::vocabulary(&app.sessions), buf);
+                    *buf = tags::complete(buf, &found);
+                }
                 KeyCode::Enter => {
                     let (field, text) = (*field, buf.trim().to_string());
                     app.mode = Mode::Browse;
@@ -125,6 +167,7 @@ pub(super) fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> Resul
                     app.show_untitled = !app.show_untitled;
                     app.clamp();
                 }
+                KeyCode::Char('g') if ctrl => app.open_tags(),
                 KeyCode::Char('a') if ctrl => {
                     app.show_archived = !app.show_archived;
                     app.clamp();

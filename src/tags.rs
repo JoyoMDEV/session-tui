@@ -81,21 +81,88 @@ pub fn new_ticket_keys<'a>(existing: &[String], text: &'a str) -> Vec<&'a str> {
         .collect()
 }
 
+/// Every tag of the given sessions once, spelled in its normal form, with the number of sessions
+/// that have it. Most used first, ties by name.
+pub fn counts<'a>(sessions: impl IntoIterator<Item = &'a Session>) -> Vec<(String, usize)> {
+    tally(sessions, |_| true)
+}
+
 /// The tags in use, most used first (ties by name), without ticket-like keys, which belong in
 /// the tickets field and shouldn't be suggested as topics.
 pub fn vocabulary(sessions: &[Session]) -> Vec<(String, usize)> {
+    tally(sessions, |tag| !tickets::looks_like_key(tag))
+}
+
+/// Counts the sessions per tag, looking only at tags for which `keep` is true. `keep` sees the
+/// tag as stored, because a ticket key is recognised by its upper case spelling.
+fn tally<'a>(
+    sessions: impl IntoIterator<Item = &'a Session>,
+    keep: impl Fn(&str) -> bool,
+) -> Vec<(String, usize)> {
     let mut counts: HashMap<String, usize> = HashMap::new();
-    for tag in sessions.iter().flat_map(|s| &s.tags) {
-        if tickets::looks_like_key(tag) {
-            continue;
-        }
-        if let Some(tag) = normalize(tag) {
+    for s in sessions {
+        // A session that lists a tag twice, in two spellings, still counts once.
+        let mut own: Vec<String> = s
+            .tags
+            .iter()
+            .filter(|t| keep(t))
+            .filter_map(|t| normalize(t))
+            .collect();
+        own.sort();
+        own.dedup();
+        for tag in own {
             *counts.entry(tag).or_default() += 1;
         }
     }
     let mut out: Vec<_> = counts.into_iter().collect();
     out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     out
+}
+
+/// Existing tags that could finish the word being typed at the end of `text`, most used first.
+/// Words typed before it are not offered again, and with nothing typed yet the most used tags
+/// are offered.
+pub fn suggestions(vocabulary: &[(String, usize)], text: &str) -> Vec<String> {
+    let (done, prefix) = split_last_word(text);
+    let prefix = normalize(prefix).unwrap_or_default();
+    vocabulary
+        .iter()
+        .map(|(tag, _)| tag)
+        .filter(|tag| tag.starts_with(&prefix))
+        .filter(|tag| !done.iter().any(|w| same(w, tag)))
+        .cloned()
+        .collect()
+}
+
+/// Completes the last word of `text` like a shell: a single suggestion is completed and followed
+/// by a space, several are completed as far as they agree, and without a match nothing changes.
+pub fn complete(text: &str, suggestions: &[String]) -> String {
+    let (_, prefix) = split_last_word(text);
+    let head = &text[..text.len() - prefix.len()];
+    let common = match suggestions {
+        [] => return text.to_string(),
+        [only] => return format!("{head}{only} "),
+        [first, rest @ ..] => rest.iter().fold(first.clone(), |acc, s| {
+            let n = acc
+                .chars()
+                .zip(s.chars())
+                .take_while(|(a, b)| a == b)
+                .count();
+            acc.chars().take(n).collect()
+        }),
+    };
+    // Never shorten what was typed: a typed `Obs` would otherwise be cut to nothing.
+    if common.chars().count() > prefix.trim_start_matches('#').chars().count() {
+        format!("{head}{common}")
+    } else {
+        text.to_string()
+    }
+}
+
+/// The words of `text` before the last one, and the last one (empty after a trailing space).
+fn split_last_word(text: &str) -> (Vec<&str>, &str) {
+    let start = text.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    (text[..start].split_whitespace().collect(), &text[start..])
 }
 
 /// `observability (5), repair (3)`, cut off at a fixed size.
@@ -120,6 +187,61 @@ mod tests {
     use super::*;
     use crate::store::new_session;
     use chrono::Utc;
+
+    #[test]
+    fn counts_every_tag_once_per_session_in_its_normal_form() {
+        let a = session(&["Observability", "repair", "observability"]);
+        let b = session(&["observability", "ABC-1"]);
+        assert_eq!(
+            counts([&a, &b]),
+            [
+                ("observability".to_string(), 2),
+                ("abc-1".to_string(), 1),
+                ("repair".to_string(), 1)
+            ]
+        );
+        assert!(counts(std::iter::empty::<&Session>()).is_empty());
+        // The hook's vocabulary leaves ticket-like tags out.
+        assert_eq!(vocabulary(&[a, b]).len(), 2);
+    }
+
+    fn vocab() -> Vec<(String, usize)> {
+        [("observability", 5), ("observer", 2), ("repair", 2)]
+            .into_iter()
+            .map(|(t, n)| (t.to_string(), n))
+            .collect()
+    }
+
+    #[test]
+    fn suggestions_finish_the_last_word_and_skip_tags_already_typed() {
+        let v = vocab();
+        assert_eq!(suggestions(&v, "obs"), ["observability", "observer"]);
+        assert_eq!(suggestions(&v, "#OBS"), ["observability", "observer"]);
+        assert_eq!(suggestions(&v, "repair obs"), ["observability", "observer"]);
+        assert_eq!(suggestions(&v, "observability obs"), ["observer"]);
+        assert_eq!(suggestions(&v, "zzz"), Vec::<String>::new());
+        // Nothing typed yet: the most used tags, minus the ones already there.
+        assert_eq!(suggestions(&v, ""), ["observability", "observer", "repair"]);
+        assert_eq!(suggestions(&v, "observer "), ["observability", "repair"]);
+    }
+
+    #[test]
+    fn complete_works_like_a_shell() {
+        let v = vocab();
+        // One match: finished, with a space.
+        assert_eq!(complete("rep", &suggestions(&v, "rep")), "repair ");
+        assert_eq!(
+            complete("observer rep", &suggestions(&v, "observer rep")),
+            "observer repair "
+        );
+        // Several matches: as far as they agree, never shorter than typed.
+        assert_eq!(complete("ob", &suggestions(&v, "ob")), "observ");
+        assert_eq!(complete("observ", &suggestions(&v, "observ")), "observ");
+        assert_eq!(complete("OBS", &suggestions(&v, "OBS")), "observ");
+        // No match, or nothing typed with several candidates: unchanged.
+        assert_eq!(complete("zzz", &suggestions(&v, "zzz")), "zzz");
+        assert_eq!(complete("", &suggestions(&v, "")), "");
+    }
 
     #[test]
     fn new_ticket_keys_skips_tags_that_are_already_there() {

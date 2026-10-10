@@ -653,6 +653,16 @@ fn resume_reports_no_match_and_a_missing_transcript() {
 }
 
 #[test]
+fn resume_query_words_with_a_hash_match_a_tag_exactly() {
+    let (env, bin) = resumable_env("resume-hash-tag");
+    let out = resume(&env, &bin, &["--list", "#auth"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out).lines().count(), 2);
+    let none = resume(&env, &bin, &["--list", "#aut"]);
+    assert!(stdout(&none).is_empty(), "a tag word is not fuzzy");
+}
+
+#[test]
 fn resume_list_shows_the_matches_without_starting_anything() {
     let (env, bin) = resumable_env("resume-list");
     let out = resume(&env, &bin, &["--list", "--tag", "auth"]);
