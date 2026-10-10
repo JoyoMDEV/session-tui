@@ -99,7 +99,9 @@ Run `sessions` to open the browser.
 | `^A` | Show or hide archived sessions |
 | `^L` | Only sessions in or around the current directory |
 | `^B` | Only sessions on the git branch checked out in the current directory |
-| `^R` `^T` `^K` `^E` | Edit title, tags, tickets, note |
+| `^G` | Tag view: every tag with its number of sessions. `Enter` filters the list by the selected tag, and again removes the filter |
+| `^R` `^T` `^K` `^E` | Edit title, tags, tickets, note. In the tag editor, `Tab` completes an existing tag |
+| `#auth` (in the search box) | Only sessions with exactly that tag, ignoring case; repeat it to require several |
 | `ticket:ABC-123` (in the search box) | Only sessions with exactly that ticket, ignoring case; repeat it to require several |
 | `^X` | Delete the entry (asks first) |
 | `Esc` | Quit |
@@ -175,7 +177,7 @@ sessions resume --ticket ABC-123 --branch feat/login
 alias cr='sessions resume'
 ```
 
-It resumes only when exactly one session matches. If several do, it lists them and exits with an error rather than guessing; if none does, or the transcript is gone, it says so. `--list` prints the matches without resuming, most recent first. Archived sessions are left out unless you add `--all`.
+It resumes only when exactly one session matches (`#tag` and `ticket:KEY` words in the query match exactly). If several do, it lists them and exits with an error rather than guessing; if none does, or the transcript is gone, it says so. `--list` prints the matches without resuming, most recent first. Archived sessions are left out unless you add `--all`.
 
 ### Tags
 

@@ -98,27 +98,43 @@ pub fn display_title(s: &Session) -> Option<(TitleSource, &str)> {
 }
 
 /// The search of the browser's search box: free text matched fuzzily against a session's title,
-/// directory, tickets, tags, note, branch and pull request, plus exact `ticket:KEY` words.
+/// directory, tickets, tags, note, branch and pull request, plus exact `ticket:KEY` and `#tag`
+/// words.
 pub struct Searcher {
     matcher: SkimMatcherV2,
     free_text: String,
     tickets: Vec<String>,
+    tags: Vec<String>,
 }
 
 impl Searcher {
     pub fn new(query: &str) -> Searcher {
-        let (free_text, tickets) = tickets::parse_query(query);
+        let (tag_words, rest): (Vec<&str>, Vec<&str>) = query
+            .split_whitespace()
+            .partition(|w| w.len() > 1 && w.starts_with('#'));
+        let (free_text, tickets) = tickets::parse_query(&rest.join(" "));
         Searcher {
             matcher: SkimMatcherV2::default(),
             free_text,
             tickets,
+            tags: tag_words.into_iter().filter_map(tags::normalize).collect(),
         }
+    }
+
+    /// The exact `ticket:KEY` filters in the query.
+    pub fn tickets(&self) -> &[String] {
+        &self.tickets
+    }
+
+    /// The exact `#tag` filters in the query, in their normal spelling.
+    pub fn tags(&self) -> &[String] {
+        &self.tags
     }
 
     /// How well the session matches, higher is better, or `None` if it does not match. Without
     /// free text every session that has the asked tickets matches with a score of 0.
     pub fn score(&self, s: &Session) -> Option<i64> {
-        if !tickets::has_all(s, &self.tickets) {
+        if !tickets::has_all(s, &self.tickets) || !tags::has_all(s, &self.tags) {
             return None;
         }
         if self.free_text.is_empty() {
@@ -135,6 +151,26 @@ impl Searcher {
             s.pr_url.as_deref().unwrap_or("")
         );
         self.matcher.fuzzy_match(&hay, &self.free_text)
+    }
+}
+
+/// `query` with the `#tag` word added, or removed if it is there already, for the browser's tag
+/// view. An added word is followed by a space so typing can go on.
+pub fn toggle_tag_word(query: &str, tag: &str) -> String {
+    let word = format!("#{tag}");
+    let words: Vec<&str> = query.split_whitespace().collect();
+    if words.iter().any(|w| w.eq_ignore_ascii_case(&word)) {
+        words
+            .into_iter()
+            .filter(|w| !w.eq_ignore_ascii_case(&word))
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        let mut out = words.join(" ");
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out + &word + " "
     }
 }
 
@@ -311,6 +347,31 @@ mod tests {
             pr_label("https://example.test/merge/abc"),
             "https://example.test/merge/abc"
         );
+    }
+
+    #[test]
+    fn a_hash_word_is_an_exact_tag_filter() {
+        let mut s = session("a", "/x", 1);
+        s.tags = vec!["observability".into()];
+        let tags = |q: &str| Searcher::new(q).score(&s).is_some();
+        assert!(tags("#observability"));
+        assert!(tags("#Observability"));
+        assert!(!tags("#observ"), "no fuzzy matching on a tag word");
+        assert!(!tags("#observability #repair"), "every tag word must match");
+        assert!(!tags("#observability ticket:ABC-1"));
+        // A lone `#` is plain text, not a filter.
+        assert_eq!(Searcher::new("#").tags(), Vec::<String>::new());
+        assert_eq!(Searcher::new("fix #a #b").tags(), ["a", "b"]);
+        assert_eq!(Searcher::new("fix ticket:ABC-1").tickets(), ["ABC-1"]);
+    }
+
+    #[test]
+    fn toggle_tag_word_adds_and_removes_the_word() {
+        assert_eq!(toggle_tag_word("", "auth"), "#auth ");
+        assert_eq!(toggle_tag_word("fix login", "auth"), "fix login #auth ");
+        assert_eq!(toggle_tag_word("fix #auth login", "auth"), "fix login");
+        assert_eq!(toggle_tag_word("#AUTH", "auth"), "");
+        assert_eq!(toggle_tag_word("#auth", "repair"), "#auth #repair ");
     }
 
     #[test]

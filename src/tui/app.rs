@@ -3,9 +3,9 @@
 
 use super::Launch;
 use crate::launch::default_args;
-use crate::query::Searcher;
+use crate::query::{self, Searcher};
 use crate::store::{self, Session};
-use crate::{tickets, transcript};
+use crate::{tags, tickets, transcript};
 use ratatui::widgets::ListState;
 use std::collections::HashSet;
 use std::process::Command;
@@ -37,6 +37,8 @@ pub(super) enum Mode {
     ConfirmDelete,
     /// Wrapped conversation text and the first visible line.
     Preview(Vec<String>, usize),
+    /// Every tag with its number of sessions, and the selected row.
+    Tags(Vec<(String, usize)>, ListState),
 }
 
 /// Where the title shown for a session comes from, in order of preference.
@@ -103,14 +105,7 @@ impl App {
             .sessions
             .iter()
             .enumerate()
-            .filter(|(_, s)| self.show_untitled || shown_title(s).0 != TitleKind::Missing)
-            .filter(|(_, s)| self.show_archived || !s.archived)
-            .filter(|(_, s)| !self.only_here || in_dir(&s.cwd, &self.launch_dir))
-            .filter(|(_, s)| {
-                self.only_branch
-                    .as_ref()
-                    .is_none_or(|b| s.branch.as_ref() == Some(b))
-            })
+            .filter(|(_, s)| self.in_scope(s))
             .filter_map(|(i, s)| search.score(s).map(|score| (score, i)))
             .collect();
         scored.sort_by(|a, b| {
@@ -121,6 +116,39 @@ impl App {
             })
         });
         scored.into_iter().map(|(_, i)| i).collect()
+    }
+
+    /// Whether the list may show `s` before the search box is looked at: the toggles for empty and
+    /// archived sessions and the directory and branch filters.
+    fn in_scope(&self, s: &Session) -> bool {
+        (self.show_untitled || shown_title(s).0 != TitleKind::Missing)
+            && (self.show_archived || !s.archived)
+            && (!self.only_here || in_dir(&s.cwd, &self.launch_dir))
+            && self
+                .only_branch
+                .as_ref()
+                .is_none_or(|b| s.branch.as_ref() == Some(b))
+    }
+
+    /// Opens the tag view. It counts the sessions the list can show, so a count matches what
+    /// selecting the tag leaves in the list.
+    pub(super) fn open_tags(&mut self) {
+        let counts = tags::counts(self.sessions.iter().filter(|s| self.in_scope(s)));
+        let mut state = ListState::default();
+        state.select(if counts.is_empty() { None } else { Some(0) });
+        self.mode = Mode::Tags(counts, state);
+    }
+
+    /// Adds the tag as an exact `#tag` word to the search box, or takes it out if it is there.
+    pub(super) fn toggle_tag_filter(&mut self, tag: &str) {
+        self.query = query::toggle_tag_word(&self.query, tag);
+        self.list.select(Some(0));
+        self.clamp();
+    }
+
+    /// Existing tags that could finish the word being typed in the tag editor.
+    pub(super) fn tag_suggestions(&self, text: &str) -> Vec<String> {
+        tags::suggestions(&tags::vocabulary(&self.sessions), text)
     }
 
     pub(super) fn selected(&self) -> Option<usize> {
@@ -320,6 +348,52 @@ mod tests {
         assert!(app.status.starts_with("ABC-123 looks like a ticket key"));
         assert!(app.status.contains("^K"));
         assert!(app.sessions[0].tags.is_empty());
+    }
+
+    fn tag_rows(app: &App) -> Vec<(String, usize)> {
+        match &app.mode {
+            Mode::Tags(rows, _) => rows.clone(),
+            _ => panic!("the tag view is not open"),
+        }
+    }
+
+    #[test]
+    fn the_tag_view_counts_what_the_list_can_show() {
+        let mut app = app_with(4);
+        app.sessions[0].tags = vec!["auth".into(), "repair".into()];
+        app.sessions[1].tags = vec!["auth".into()];
+        app.sessions[2].tags = vec!["auth".into()];
+        app.sessions[2].archived = true;
+        app.sessions[3].tags = vec!["Repair".into()];
+        app.open_tags();
+        assert_eq!(
+            tag_rows(&app),
+            [("auth".to_string(), 2), ("repair".to_string(), 2)],
+            "the archived session does not count while it is hidden"
+        );
+        app.show_archived = true;
+        app.open_tags();
+        assert_eq!(tag_rows(&app)[0], ("auth".to_string(), 3));
+    }
+
+    #[test]
+    fn the_tag_view_of_sessions_without_tags_is_empty() {
+        let mut app = app_with(2);
+        app.open_tags();
+        assert!(tag_rows(&app).is_empty());
+    }
+
+    #[test]
+    fn choosing_a_tag_filters_exactly_and_choosing_it_again_clears_the_filter() {
+        let mut app = app_with(3);
+        app.sessions[0].tags = vec!["auth".into()];
+        app.sessions[1].tags = vec!["authz".into()];
+        app.toggle_tag_filter("auth");
+        assert_eq!(app.query, "#auth ");
+        assert_eq!(app.visible(), [0], "authz is not auth");
+        app.toggle_tag_filter("auth");
+        assert_eq!(app.query, "");
+        assert_eq!(app.visible(), [0, 1, 2]);
     }
 
     #[test]
