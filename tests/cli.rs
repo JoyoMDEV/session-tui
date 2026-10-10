@@ -1458,3 +1458,59 @@ fn the_test_environment_sets_or_clears_every_variable_the_program_reads() {
         );
     }
 }
+
+#[test]
+fn ticket_refuses_a_key_with_a_space_or_a_comma_and_adds_none_of_the_call() {
+    let env = Env::new("ticket-keys");
+    env.register("s1", "/w");
+    for bad in ["A B", "A,B", ""] {
+        let out = env.run(&["ticket", "--id", "s1", "ABC-1", bad]);
+        assert_eq!(out.status.code(), Some(1), "{bad:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("is not a ticket key"),
+            "{bad:?}: {}",
+            stderr(&out)
+        );
+        assert!(
+            env.session("s1").get("tickets").is_none(),
+            "{bad:?}: the good key was added although the call failed"
+        );
+    }
+    // Good keys still work, each as its own argument.
+    assert!(
+        env.run(&["ticket", "--id", "s1", "ABC-1", "DEF-2"])
+            .status
+            .success()
+    );
+    assert_eq!(env.session("s1")["tickets"], json!(["ABC-1", "DEF-2"]));
+}
+
+#[test]
+fn ticket_remove_still_takes_a_key_that_was_stored_with_a_comma() {
+    let env = Env::new("ticket-remove-old");
+    env.write_sessions(json!([
+        {"id": "s1", "cwd": "/w", "tickets": ["ABC-1,DEF-2", "GHI-3"],
+         "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"},
+    ]));
+    let out = env.run(&["ticket", "--id", "s1", "--remove", "ABC-1,DEF-2"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(env.session("s1")["tickets"], json!(["GHI-3"]));
+}
+
+#[test]
+fn start_refuses_a_comma_in_a_ticket_key_too() {
+    let (env, bin) = resumable_env("start-comma-ticket");
+    let dir = env.dir.join("app");
+    let out = start(
+        &env,
+        &bin,
+        &["--dir", dir.to_str().unwrap(), "--ticket", "A-1,B-2"],
+    );
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("is not a ticket key"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(launched(&env).is_none());
+}
