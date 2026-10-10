@@ -17,8 +17,6 @@ use ratatui::{
 /// Rows scrolled per mouse wheel notch.
 const WHEEL_STEP: isize = 3;
 
-/// Moves a scroll offset by `delta`. The last page stays full instead of scrolling the final
-/// line to the top.
 /// Moves the selection of a list by `delta` rows without leaving it.
 fn select_step(state: &mut ListState, len: usize, delta: isize) {
     if len == 0 {
@@ -28,6 +26,8 @@ fn select_step(state: &mut ListState, len: usize, delta: isize) {
     state.select(Some((cur + delta).clamp(0, len as isize - 1) as usize));
 }
 
+/// Moves a scroll offset by `delta`. The last page stays full instead of scrolling the final
+/// line to the top.
 fn scroll_by(cur: usize, delta: isize, len: usize, page: usize) -> usize {
     (cur as isize + delta).clamp(0, len.saturating_sub(page) as isize) as usize
 }
