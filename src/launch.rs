@@ -1,5 +1,6 @@
 //! Starting `claude`, to resume a session or to start a new one. The browser and the commands end
-//! here: the process is replaced by `claude`, which is why the tool is Unix only.
+//! here: the process is replaced by `claude`, which is why the tool is Unix only. It does not
+//! decide which session to resume or what to start.
 
 use crate::preset::{self, Preset};
 use crate::store::Session;

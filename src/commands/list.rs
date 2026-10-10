@@ -1,4 +1,4 @@
-//! `list`: print sessions, one line each or as JSON, optionally filtered.
+//! `list`: print sessions, one line each or as JSON, optionally filtered. It only reads.
 
 use crate::cli::FilterArgs;
 use crate::output::say;

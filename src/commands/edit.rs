@@ -1,4 +1,5 @@
-//! `title`, `ticket`, `tag` and `note`: change one field of one session.
+//! `title`, `ticket`, `tag` and `note`: change one field of one session. A session that does not
+//! exist is an error, never created, and a refused value changes nothing.
 
 use crate::{store, tags, tickets};
 use anyhow::{Context, Result, bail};

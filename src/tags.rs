@@ -1,6 +1,6 @@
 //! Topic tags (`observability`, `repair`): one spelling per tag, removal, and the vocabulary the
 //! hook shows the agent so it reuses tags instead of inventing new ones. Ticket keys live in
-//! `tickets.rs`.
+//! `tickets.rs`. It works on values and does not read or write the sessions file.
 
 use crate::store::Session;
 use crate::tickets;

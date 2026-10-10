@@ -1,4 +1,5 @@
-//! `sessions doctor`: checks that everything the tool relies on is in place.
+//! `sessions doctor`: checks that everything the tool relies on is in place. It only reads: it
+//! never changes a file, and a check that cannot be made is reported, not fatal.
 
 use crate::output::text;
 use crate::setup::{self, canonical, find_in_path};

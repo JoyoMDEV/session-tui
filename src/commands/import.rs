@@ -1,4 +1,5 @@
-//! `import`: register Claude Code transcripts that aren't known yet.
+//! `import`: register Claude Code transcripts that aren't known yet. It adds and fills in what is
+//! missing, and never removes a session.
 
 use crate::output::say;
 use crate::transcript;

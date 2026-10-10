@@ -1,4 +1,5 @@
-//! `sessions setup`: registers the SessionStart hook in Claude Code's `settings.json`.
+//! `sessions setup`: registers the SessionStart hook in Claude Code's `settings.json`. It keeps the
+//! key order, leaves a backup, and never touches a file that is not valid JSON.
 
 use crate::output::say;
 use crate::store;

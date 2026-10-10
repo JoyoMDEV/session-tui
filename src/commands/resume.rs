@@ -1,4 +1,5 @@
-//! `resume`: resume the session a query points to, without the browser.
+//! `resume`: resume the session a query points to, without the browser. It resumes only a unique
+//! match and never guesses between several.
 
 use crate::cli::FilterArgs;
 use crate::output::say;

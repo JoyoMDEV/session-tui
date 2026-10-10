@@ -1,4 +1,6 @@
-//! Ticket keys (`ABC-123`) on sessions: editing and the search syntax. Tickets are references to an issue tracker; tags are topics, and the two stay apart.
+//! Ticket keys (`ABC-123`) on sessions: what a key is, editing, and the search syntax. Tickets are
+//! references to an issue tracker; tags are topics, and the two stay apart. It works on values and
+//! does not read or write the sessions file.
 
 use crate::store::Session;
 

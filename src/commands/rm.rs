@@ -1,4 +1,4 @@
-//! `rm`: remove a session.
+//! `rm`: remove a session. An ID that is not known is an error.
 
 use crate::store;
 use anyhow::{Result, bail};

@@ -1,5 +1,6 @@
 //! `sessions.json`: the data model and every write to it (exclusive lock, atomic replace, recovery
-//! from a corrupt file). Other modules change sessions only through `update`.
+//! from a corrupt file). Other modules change sessions only through `update`. It knows nothing
+//! about transcripts or the terminal.
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
