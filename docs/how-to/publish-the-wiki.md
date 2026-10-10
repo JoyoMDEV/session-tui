@@ -6,8 +6,8 @@ says what happens, how to set the wiki up once, and how to publish by hand.
 ## What happens on a release
 
 `release.yml` calls `wiki.yml` with the release tag after the release is published. The workflow
-checks out `docs/` at that tag and the wiki repository, runs `scripts/wiki.sh`, and pushes the
-result with the repository's own `GITHUB_TOKEN`. It does not need a secret. Its job is the only one
+checks out the repository at that tag and the wiki repository, runs `scripts/wiki.sh`, which reads
+`docs/` from the tag, and pushes the result with the repository's own `GITHUB_TOKEN`. It does not need a secret. Its job is the only one
 with write permission, and it writes to the wiki repository only.
 
 The script turns the folders of `docs/` into the flat page names a wiki needs:
