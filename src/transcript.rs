@@ -44,8 +44,20 @@ pub fn all() -> Vec<PathBuf> {
         .into_iter()
         .flat_map(|d| fs::read_dir(d).into_iter().flatten().filter_map(|e| e.ok()))
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl") && p.is_file())
         .collect()
+}
+
+/// The text of one line read from a transcript: `None` for a line that is not valid UTF-8, which
+/// is skipped. Any other read error (a directory named like a transcript, a file that vanished)
+/// ends the read, because every following read would fail the same way and a loop that skips
+/// them would never end.
+fn next_line(line: std::io::Result<String>) -> Result<Option<String>, ()> {
+    match line {
+        Ok(line) => Ok(Some(line)),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Ok(None),
+        Err(_) => Err(()),
+    }
 }
 
 pub fn existing_ids() -> HashSet<String> {
@@ -93,8 +105,12 @@ fn prompt_text(v: &Value) -> Option<String> {
 pub fn read_info(path: &Path) -> Result<Info> {
     let mut info = Info::default();
     for line in BufReader::new(File::open(path)?).lines().take(MAX_LINES) {
-        // A line that cannot be read or parsed is skipped, as in `scan_meta` and `preview`.
-        let Ok(line) = line else { continue };
+        // A line that is not valid UTF-8 or not JSON is skipped, as in `scan_meta` and `preview`.
+        let line = match next_line(line) {
+            Ok(Some(line)) => line,
+            Ok(None) => continue,
+            Err(()) => break,
+        };
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -197,7 +213,11 @@ fn quick_str<'a>(line: &'a str, key: &str) -> Option<&'a str> {
 pub fn scan_meta(path: &Path) -> Result<Meta> {
     let mut meta = Meta::default();
     for line in BufReader::new(File::open(path)?).lines() {
-        let Ok(line) = line else { continue };
+        let line = match next_line(line) {
+            Ok(Some(line)) => line,
+            Ok(None) => continue,
+            Err(()) => break,
+        };
         if line.contains("\"ai-title\"") || line.contains("\"pr-link\"") {
             let Ok(v) = serde_json::from_str::<Value>(&line) else {
                 continue;
@@ -266,7 +286,11 @@ const PREVIEW_MESSAGE_CHARS: usize = 1500;
 pub fn preview(path: &Path, width: usize) -> Result<Vec<String>> {
     let mut messages: std::collections::VecDeque<(&'static str, String)> = Default::default();
     for line in BufReader::new(File::open(path)?).lines() {
-        let Ok(line) = line else { continue };
+        let line = match next_line(line) {
+            Ok(Some(line)) => line,
+            Ok(None) => continue,
+            Err(()) => break,
+        };
         if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
             continue;
         }
@@ -537,5 +561,32 @@ mod tests {
         assert_eq!(info.cwd.as_deref(), Some("/w"));
         assert_eq!(info.first_prompt.as_deref(), Some("Fix the login"));
         let _ = fs::remove_file(p);
+    }
+
+    /// Runs `f` on another thread and fails the test, instead of hanging it, if it takes too long.
+    fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("did not finish: it loops on an entry that cannot be read")
+    }
+
+    #[test]
+    fn a_directory_named_like_a_transcript_is_neither_listed_nor_read_forever() {
+        let dir = std::env::temp_dir().join(format!("sessions-tr-{}-dirjsonl", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let fake = dir.join("bad.jsonl");
+        fs::create_dir_all(&fake).unwrap();
+        let (a, b) = (fake.clone(), fake.clone());
+        let meta = within(move || scan_meta(&a));
+        assert!(
+            meta.is_ok(),
+            "an unreadable entry means less information, not an error"
+        );
+        let preview = within(move || preview(&b, 40));
+        assert!(preview.is_ok_and(|lines| lines.is_empty()));
+        let _ = fs::remove_dir_all(dir);
     }
 }

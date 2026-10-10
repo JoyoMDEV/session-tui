@@ -2,10 +2,24 @@
 
 use crate::store::Session;
 
-/// A key as the user typed it, trimmed. Keys never contain whitespace.
+/// A key as the user typed it, trimmed. A key is not empty and contains neither whitespace nor a
+/// comma, the two ways the browser's ticket editor separates keys.
 pub fn normalize(key: &str) -> Option<String> {
     let key = key.trim();
-    (!key.is_empty() && !key.contains(char::is_whitespace)).then(|| key.to_string())
+    (!key.is_empty() && !key.contains(|c: char| c.is_whitespace() || c == ','))
+        .then(|| key.to_string())
+}
+
+/// Whether every one of `keys` can be a ticket key, or why not. Several keys on the command line
+/// are separate arguments, so a space or a comma inside one is a mistake to report, not something
+/// to split or drop.
+pub fn check(keys: &[String]) -> Result<(), String> {
+    match keys.iter().find(|k| normalize(k).is_none()) {
+        None => Ok(()),
+        Some(bad) => Err(format!(
+            "{bad:?} is not a ticket key: a key has no spaces or commas. Give each ticket as its own argument"
+        )),
+    }
 }
 
 pub fn same(a: &str, b: &str) -> bool {
@@ -128,6 +142,33 @@ pub fn migrate(sessions: &mut [Session]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_key_has_neither_whitespace_nor_a_comma() {
+        for bad in ["A B", "A,B", "ABC-1,", " ", "", "A\tB", "ABC-1 DEF-2"] {
+            assert_eq!(normalize(bad), None, "{bad:?}");
+        }
+        assert_eq!(normalize("  ABC-1 "), Some("ABC-1".into()));
+        assert_eq!(normalize("proj_x/42"), Some("proj_x/42".into()));
+    }
+
+    #[test]
+    fn check_names_the_first_bad_key_and_what_to_do() {
+        let keys = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(check(&keys(&["ABC-1", "DEF-2"])), Ok(()));
+        assert_eq!(check(&[]), Ok(()));
+        let why = check(&keys(&["ABC-1", "A B", "C,D"])).unwrap_err();
+        assert!(why.starts_with("\"A B\" is not a ticket key"), "{why}");
+        assert!(
+            why.contains("no spaces or commas") && why.contains("its own argument"),
+            "{why}"
+        );
+        assert!(
+            check(&keys(&[""]))
+                .unwrap_err()
+                .starts_with("\"\" is not a ticket key")
+        );
+    }
     use crate::store::new_session;
     use chrono::Utc;
 

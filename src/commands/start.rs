@@ -3,6 +3,7 @@
 use crate::launch::{self, NewSession};
 use crate::paths;
 use crate::preset::Preset;
+use crate::tickets;
 use anyhow::{Result, bail};
 use std::path::PathBuf;
 
@@ -20,15 +21,7 @@ pub fn run(
         Err(why) => bail!("{why}"),
     };
     let preset = Preset::new(tickets, title);
-    if let Some(bad) = preset
-        .tickets
-        .iter()
-        .find(|t| t.contains(char::is_whitespace))
-    {
-        bail!(
-            "{bad:?} is not a ticket key: a key has no spaces. Give each ticket as its own --ticket"
-        );
-    }
+    tickets::check(&preset.tickets).map_err(anyhow::Error::msg)?;
     let new = NewSession {
         dir: dir.display().to_string(),
         prompt: prompt.join(" "),

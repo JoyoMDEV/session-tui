@@ -13,6 +13,10 @@ pub fn title(id: Option<String>, title: String) -> Result<()> {
 }
 
 pub fn ticket(id: Option<String>, remove: bool, keys: Vec<String>) -> Result<()> {
+    // Removing stays lenient, so that a key stored by an earlier version can still be removed.
+    if !remove {
+        tickets::check(&keys).map_err(anyhow::Error::msg)?;
+    }
     modify(id, |s| {
         for key in &keys {
             if remove {
