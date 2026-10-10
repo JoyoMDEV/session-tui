@@ -22,8 +22,9 @@ The script turns the folders of `docs/` into the flat page names a wiki needs:
 
 Links between pages are rewritten to those names. A link to any other file of the repository, such
 as the README, points at that file on GitHub at the release tag, so the wiki of a release links to
-the files of that release. The sidebar is built from the section headings and the first link of
-each list item in `Home.md`. Each page ends with a note saying which file and tag it comes from.
+the files of that release. The sidebar is built from `Home.md`: each section heading links to that
+section of the Home page, and sections that have wiki pages list them below it. Links that leave
+the wiki, such as those to the README, are only on the Home page. Each page ends with a note saying which file and tag it comes from.
 
 Because the wiki is overwritten, a page that is deleted from `docs/` disappears from the wiki at
 the next release, and changes made in the wiki itself are lost. Edit `docs/` instead.

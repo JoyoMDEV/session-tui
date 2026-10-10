@@ -70,6 +70,10 @@ fn fixture(name: &str) -> (PathBuf, PathBuf) {
          - [Site](https://example.test/x)\n\
          - plain text without a link\n\
          \n\
+         ## Only elsewhere\n\
+         \n\
+         - [Readme](../README.md)\n\
+         \n\
          `[inline](code.md)` stays, and so does\n\
          \n\
          ```md\n\
@@ -152,17 +156,20 @@ fn code_blocks_and_inline_code_are_copied_unchanged() {
 }
 
 #[test]
-fn the_sidebar_lists_the_sections_and_the_first_link_of_each_item() {
+fn the_sidebar_links_each_section_and_lists_only_the_pages_that_are_in_the_wiki() {
     let (src, wiki) = fixture("sidebar");
     assert!(build(&src, &wiki).status.success());
     let sidebar = read(&wiki, "_Sidebar.md");
-    let blob = "https://github.com/owner/repo/blob/v1.2.3";
     assert_eq!(
         sidebar,
-        format!(
-            "[Home](Home)\n\n**Learn**\n\n* [Install]({blob}/README.md#install)\n* [Tool](Reference-tool)\n\n**Know**\n\n* [Design](Explanation-design#why)\n* [Decision](ADR-0001-first)\n* [Site](https://example.test/x)\n"
-        ),
-        "an item without a link is left out, and a link title is dropped"
+        "[Home](Home)\n\
+         \n**[Learn](Home#learn)**\n\
+         \n* [Tool](Reference-tool)\n\
+         \n**[Know](Home#know)**\n\
+         \n* [Design](Explanation-design#why)\n\
+         * [Decision](ADR-0001-first)\n\
+         \n**[Only elsewhere](Home#only-elsewhere)**\n",
+        "links that leave the wiki and items without a link are left out, and a link title is dropped"
     );
 }
 
