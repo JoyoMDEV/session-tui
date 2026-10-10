@@ -1,7 +1,7 @@
 //! Keeps the documentation in one piece: every relative link in the Markdown files points at a file
 //! and a heading that exist, `docs/Home.md` links every other page under `docs/`, and the README
-//! links `docs/Home.md`. A wiki generated from `docs/` is planned, and a broken link here would be
-//! a broken page there.
+//! links `docs/Home.md`. The wiki is generated from `docs/`, and a broken link here would be a
+//! broken page there.
 
 use std::{
     collections::BTreeSet,

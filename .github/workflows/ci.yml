@@ -22,7 +22,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: shellcheck -s sh install.sh
+      - run: shellcheck -s sh install.sh scripts/formula.sh scripts/wiki.sh
       # Pinned so a new release can't fail the build unannounced. Bump it by hand, and in
       # .markdownlint-cli2.yaml and AGENTS.md, which show the same command.
       - run: npx --yes markdownlint-cli2@0.23.3

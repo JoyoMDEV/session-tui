@@ -24,7 +24,8 @@ Steps for a specific task.
 - [Keep tags and tickets tidy](../README.md#tags) and [record tickets](../README.md#tickets)
 - [Fix a problem](../README.md#troubleshooting)
 - [Contribute, build, test and release](../AGENTS.md): conventions and process for maintainers.
-  Longer maintainer how-tos will live in `docs/how-to/` and be listed here.
+  Longer maintainer how-tos are in `docs/how-to/` and listed here.
+- [Publish the documentation to the wiki](how-to/publish-the-wiki.md)
 
 ## Reference
 

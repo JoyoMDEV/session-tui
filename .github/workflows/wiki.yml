@@ -1,0 +1,63 @@
+name: Wiki
+
+# Publishes docs/ to the repository's wiki. release.yml calls this with the release tag; it can
+# also be run by hand to publish the docs of a tag or branch. The wiki is rebuilt from docs/ every
+# time, so edit docs/ and not the wiki.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Tag or branch whose docs/ to publish, e.g. v0.2.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or branch whose docs/ to publish, e.g. v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Two runs would push to the same wiki; the second waits for the first.
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # The only job here that writes, and it writes to the wiki repository only.
+    permissions:
+      contents: write
+    env:
+      REF: ${{ inputs.ref }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: src
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+
+      - name: Build the pages
+        run: sh src/scripts/wiki.sh src wiki "$REF" "$REPO"
+
+      - name: Push
+        working-directory: wiki
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The wiki is up to date."
+            exit 0
+          fi
+          git commit -m "docs: publish the docs of $REF"
+          git push
