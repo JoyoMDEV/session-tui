@@ -2,7 +2,9 @@
 //! quiet: stdout is exactly one JSON object, diagnostics go to stderr, and there is no network
 //! access and no scan of whole transcripts.
 
-use crate::{store, tags, transcript};
+use crate::preset::Preset;
+use crate::store::Session;
+use crate::{store, tags, tickets, transcript};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::io::{Read, Write};
@@ -25,14 +27,22 @@ pub fn run() -> Result<()> {
     std::io::stdin().read_to_string(&mut input)?;
     let h: HookInput = serde_json::from_str(&input).context("parsing hook input")?;
 
+    let preset = Preset::from_env();
+
     let view = store::update(|sessions| {
+        let is_new = !sessions.iter().any(|s| s.id == h.session_id);
         store::upsert(sessions, &h.session_id, &h.cwd);
+        let mut started_for = Vec::new();
         if let Some(s) = sessions.iter_mut().find(|s| s.id == h.session_id) {
+            if let (true, Some(preset)) = (is_new && h.source == "startup", &preset) {
+                started_for = apply_preset(s, preset);
+            }
             transcript::fill_suggestion(s);
         }
         let s = sessions.iter().find(|s| s.id == h.session_id)?;
         Some(HookView {
             title: s.title.clone(),
+            started_for,
             tags: s.tags.clone(),
             vocabulary: tags::vocabulary(sessions),
             // Set SESSIONS_RESUME_REMINDER=0 to turn the reminder off.
@@ -59,6 +69,20 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+/// Gives a session that has just been created the title and tickets of the preset that started it,
+/// and returns the tickets, for the agent's context. The caller applies it only to a new session
+/// at `startup`: the variable is inherited by a `/resume` or `/clear` in the same process, and must
+/// not reach another session.
+fn apply_preset(s: &mut Session, preset: &Preset) -> Vec<String> {
+    if s.title.is_none() {
+        s.title = preset.title.clone();
+    }
+    for key in &preset.tickets {
+        tickets::add(&mut s.tickets, key);
+    }
+    s.tickets.clone()
+}
+
 /// Claude Code ignores `sessionTitle` on `clear` and `compact`.
 fn title_applies(source: &str) -> bool {
     matches!(source, "startup" | "resume" | "fork")
@@ -68,6 +92,8 @@ fn title_applies(source: &str) -> bool {
 #[derive(Default)]
 struct HookView {
     title: Option<String>,
+    /// The tickets a new session was started for, from the preset of `sessions start`.
+    started_for: Vec<String>,
     tags: Vec<String>,
     /// Tags in use across all sessions, most used first.
     vocabulary: Vec<(String, usize)>,
@@ -85,6 +111,13 @@ fn hook_context(h: &HookInput, view: &HookView, exe: &std::path::Path) -> String
          already exists; add a new tag only if none fits: {exe} tag --id {id} <TAG>... \
          Remove one that no longer fits: {exe} tag --id {id} --remove <TAG>."
     );
+    if h.source == "startup" && !view.started_for.is_empty() {
+        text += &format!(
+            " This session was started for: {}. Record further tickets if the work turns out to \
+             need them.",
+            view.started_for.join(", ")
+        );
+    }
     let vocabulary = tags::vocabulary_text(&view.vocabulary);
     if !vocabulary.is_empty() {
         text += &format!(" Tags already in use (sessions): {vocabulary}.");
@@ -238,5 +271,49 @@ mod tests {
         v.tags = (0..50).map(|i| format!("tag-{i}")).collect();
         let text = context(&input("resume", None), &v);
         assert!(text.chars().count() < 5000, "{}", text.chars().count());
+    }
+
+    fn new_session() -> Session {
+        let now = chrono::Utc::now();
+        store::new_session("abc", "/x", now, now)
+    }
+
+    #[test]
+    fn a_preset_gives_a_new_session_its_title_and_tickets() {
+        let mut s = new_session();
+        let preset = Preset::new(
+            vec!["ABC-1".into(), "abc-1".into(), "ABC-2".into()],
+            Some("Fix login".into()),
+        );
+        let tickets = apply_preset(&mut s, &preset);
+        assert_eq!(s.title.as_deref(), Some("Fix login"));
+        assert_eq!(s.tickets, ["ABC-1", "ABC-2"], "a key is not added twice");
+        assert_eq!(tickets, s.tickets);
+    }
+
+    #[test]
+    fn a_preset_without_a_title_leaves_the_title_alone() {
+        let mut s = new_session();
+        s.title = Some("Mine".into());
+        apply_preset(&mut s, &Preset::new(vec![], Some("Other".into())));
+        assert_eq!(s.title.as_deref(), Some("Mine"));
+    }
+
+    #[test]
+    fn the_context_names_the_tickets_a_session_was_started_for_on_startup_only() {
+        let mut v = view(None);
+        v.started_for = vec!["ABC-1".into(), "ABC-2".into()];
+        let text = context(&input("startup", None), &v);
+        assert!(
+            text.contains("This session was started for: ABC-1, ABC-2."),
+            "{text}"
+        );
+        for source in ["resume", "clear", "compact", "fork"] {
+            assert!(
+                !context(&input(source, None), &v).contains("started for"),
+                "{source}"
+            );
+        }
+        assert!(!context(&input("startup", None), &view(None)).contains("started for"));
     }
 }

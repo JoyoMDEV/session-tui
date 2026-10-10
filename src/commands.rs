@@ -10,6 +10,7 @@ pub mod migrate_tickets;
 pub mod prune;
 pub mod resume;
 pub mod rm;
+pub mod start;
 
 use crate::cli::FilterArgs;
 use crate::query::{self, Filters};

@@ -52,8 +52,16 @@ impl Env {
 
     /// Runs the hook with `payload` on stdin.
     fn hook(&self, payload: Value) -> Output {
-        let mut child = self
-            .command(&["hook"])
+        self.hook_with_preset(payload, None)
+    }
+
+    /// Runs the hook with `payload` on stdin and `preset` as `$SESSIONS_PRESET`.
+    fn hook_with_preset(&self, payload: Value, preset: Option<&str>) -> Output {
+        let mut cmd = self.command(&["hook"]);
+        if let Some(preset) = preset {
+            cmd.env("SESSIONS_PRESET", preset);
+        }
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -613,8 +621,9 @@ fn resumable_env(name: &str) -> (Env, PathBuf) {
     fs::write(
         &script,
         format!(
-            "#!/bin/sh\n{{ pwd; for a in \"$@\"; do echo \"$a\"; done; }} > '{}'\n",
-            env.dir.join("launched").display()
+            "#!/bin/sh\n{{ pwd; for a in \"$@\"; do echo \"$a\"; done; }} > '{}'\nprintf '%s' \"${{SESSIONS_PRESET-UNSET}}\" > '{}'\n",
+            env.dir.join("launched").display(),
+            env.dir.join("launched-preset").display()
         ),
     )
     .unwrap();
@@ -973,4 +982,239 @@ fn version_flag_prints_the_crate_version() {
     let env = Env::new("version");
     let out = env.run(&["--version"]);
     assert!(stdout(&out).contains(env!("CARGO_PKG_VERSION")));
+}
+
+fn start(env: &Env, bin: &Path, args: &[&str]) -> Output {
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let mut all = vec!["start"];
+    all.extend_from_slice(args);
+    env.command(&all).env("PATH", path).output().unwrap()
+}
+
+fn launched_preset(env: &Env) -> Option<String> {
+    fs::read_to_string(env.dir.join("launched-preset")).ok()
+}
+
+#[test]
+fn start_runs_claude_in_the_directory_with_the_message_and_the_preset() {
+    let (env, bin) = resumable_env("start");
+    let dir = env.dir.join("app");
+    let out = start(
+        &env,
+        &bin,
+        &[
+            "--dir",
+            dir.to_str().unwrap(),
+            "--ticket",
+            "ABC-1",
+            "--ticket",
+            "ABC-2",
+            "--title",
+            "Fix login",
+            "fix",
+            "the",
+            "login",
+        ],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let run = launched(&env).expect("claude was started");
+    assert!(run[0].ends_with("/app"), "{run:?}");
+    assert_eq!(run[1..], ["fix the login"], "the words are one message");
+    let preset: Value = serde_json::from_str(&launched_preset(&env).unwrap()).unwrap();
+    assert_eq!(
+        preset,
+        json!({"tickets": ["ABC-1", "ABC-2"], "title": "Fix login"})
+    );
+}
+
+#[test]
+fn start_passes_the_saved_flags_before_the_message_and_guards_a_dash() {
+    let (env, bin) = resumable_env("start-flags");
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let out = env
+        .command(&[
+            "start",
+            "--dir",
+            env.dir.join("app").to_str().unwrap(),
+            // After `--`, so that `sessions start` itself does not read it as an option.
+            "--",
+            "--version please",
+        ])
+        .env("PATH", path)
+        .env("SESSIONS_CLAUDE_ARGS", "--model sonnet")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        launched(&env).unwrap()[1..],
+        ["--model", "sonnet", " --version please"]
+    );
+}
+
+#[test]
+fn start_without_a_dir_uses_the_current_directory_and_expands_home() {
+    let (env, bin) = resumable_env("start-dirs");
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let app = env.dir.join("app").canonicalize().unwrap();
+    let out = env
+        .command(&["start"])
+        .current_dir(&app)
+        .env("PATH", &path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let run = launched(&env).unwrap();
+    assert_eq!(run, [app.display().to_string()], "no message, no argument");
+    assert_eq!(
+        launched_preset(&env).as_deref(),
+        Some("UNSET"),
+        "no preset, no variable"
+    );
+
+    let _ = fs::remove_file(env.dir.join("launched"));
+    // The scratch HOME is the environment's directory, so ~/app is the app directory.
+    let out = env
+        .command(&["start", "--dir", "~/app"])
+        .env("PATH", &path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(launched(&env).unwrap()[0].ends_with("/app"));
+}
+
+#[test]
+fn start_removes_a_preset_inherited_from_the_shell() {
+    let (env, bin) = resumable_env("start-inherited");
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let out = env
+        .command(&["start", "--dir", env.dir.join("app").to_str().unwrap()])
+        .env("PATH", path)
+        .env("SESSIONS_PRESET", r#"{"tickets":["OLD-1"]}"#)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(launched_preset(&env).as_deref(), Some("UNSET"));
+}
+
+#[test]
+fn start_refuses_a_directory_that_does_not_exist_or_is_a_file() {
+    let (env, bin) = resumable_env("start-bad-dir");
+    fs::write(env.dir.join("file.txt"), "x").unwrap();
+    for (dir, reason) in [
+        ("/no/such/dir", "No such directory: /no/such/dir"),
+        ("~/file.txt", "Not a directory"),
+    ] {
+        let out = start(&env, &bin, &["--dir", dir, "hello"]);
+        assert!(!out.status.success(), "{dir}");
+        assert!(stderr(&out).contains(reason), "{dir}: {}", stderr(&out));
+    }
+    assert!(launched(&env).is_none(), "nothing may be started");
+}
+
+#[test]
+fn a_started_session_gets_its_title_and_tickets_from_the_hook() {
+    let (env, bin) = resumable_env("start-hook");
+    let app = env.dir.join("app").canonicalize().unwrap();
+    let out = start(
+        &env,
+        &bin,
+        &[
+            "--dir",
+            app.to_str().unwrap(),
+            "--ticket",
+            "ABC-7",
+            "--title",
+            "Fix login",
+        ],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    // What the fake claude saw is what the real one passes to the hook of the new session.
+    let preset = launched_preset(&env).unwrap();
+    let out = env.hook_with_preset(
+        json!({"session_id": "new1", "cwd": app.display().to_string(), "source": "startup"}),
+        Some(&preset),
+    );
+    let hook = hook_output(&out);
+    let s = env.session("new1");
+    assert_eq!(s["title"], "Fix login");
+    assert_eq!(s["tickets"], json!(["ABC-7"]));
+    assert_eq!(hook["sessionTitle"], "Fix login");
+    assert!(
+        hook["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("started for: ABC-7"),
+        "{hook}"
+    );
+}
+
+#[test]
+fn a_preset_only_applies_to_a_new_session_at_startup() {
+    let env = Env::new("preset-scope");
+    let preset = r#"{"tickets":["ABC-1"],"title":"From preset"}"#;
+    let payload = |id: &str, source: &str| json!({"session_id": id, "cwd": "/w", "source": source});
+
+    // An existing session is left alone, even at startup.
+    env.register("old", "/w");
+    assert!(
+        env.hook_with_preset(payload("old", "startup"), Some(preset))
+            .status
+            .success()
+    );
+    assert!(
+        env.session("old").get("title").is_none() && env.session("old").get("tickets").is_none()
+    );
+
+    // The variable is inherited by /resume and /clear in the same process: not for them.
+    for (id, source) in [
+        ("r", "resume"),
+        ("c", "clear"),
+        ("f", "fork"),
+        ("k", "compact"),
+    ] {
+        let out = env.hook_with_preset(payload(id, source), Some(preset));
+        assert!(out.status.success(), "{source}: {}", stderr(&out));
+        let s = env.session(id);
+        assert!(
+            s.get("title").is_none() && s.get("tickets").is_none(),
+            "{source}: {s}"
+        );
+    }
+
+    // A new session at startup gets it, and only the first time.
+    assert!(
+        env.hook_with_preset(payload("new", "startup"), Some(preset))
+            .status
+            .success()
+    );
+    assert_eq!(env.session("new")["title"], "From preset");
+    env.run(&["title", "--id", "new", "Renamed"]);
+    assert!(
+        env.hook_with_preset(payload("new", "startup"), Some(preset))
+            .status
+            .success()
+    );
+    assert_eq!(env.session("new")["title"], "Renamed");
+}
+
+#[test]
+fn a_broken_preset_never_stops_a_session_from_starting() {
+    let env = Env::new("preset-broken");
+    for (i, preset) in ["not json", "[1,2]", r#"{"tickets":"ABC-1"}"#, "", "{}"]
+        .iter()
+        .enumerate()
+    {
+        let id = format!("s{i}");
+        let out = env.hook_with_preset(
+            json!({"session_id": id, "cwd": "/w", "source": "startup"}),
+            Some(preset),
+        );
+        assert!(out.status.success(), "{preset:?}: {}", stderr(&out));
+        hook_output(&out);
+        let s = env.session(&id);
+        assert!(
+            s.get("title").is_none() && s.get("tickets").is_none(),
+            "{preset:?}"
+        );
+    }
 }
