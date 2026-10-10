@@ -89,9 +89,10 @@ Run `sessions` to open the browser.
 | Key | Action |
 | --- | --- |
 | type | Fuzzy filter |
-| `↑` `↓`, `^P` `^N` | Move |
+| `↑` `↓` | Move |
 | `PgUp` `PgDn`, `Home` `End`, mouse wheel | Scroll by page, jump to start or end, scroll |
 | `Enter` | Resume the session in its original directory |
+| `^N` | Start a new session: the directory (`Tab` completes it), a first message, tickets and a title. See [Start a session](#start-a-session) |
 | `^O` | Resume with extra `claude` flags |
 | `^V` | Preview the conversation (`Esc` closes) |
 | `Tab` | Show or hide empty sessions (no title and no prompt) |
@@ -188,7 +189,7 @@ It resumes only when exactly one session matches (`#tag` and `ticket:KEY` words 
 sessions start --dir ~/Code/app --ticket ABC-123 --title "Fix login redirect" fix the redirect after login
 ```
 
-The directory must exist (`~` and `$HOME` are expanded, and the default is the current directory). The words after the options are the first message; start them with `--` if the message begins with a dash. The flags from `SESSIONS_CLAUDE_ARGS` are passed to `claude` first, as when resuming.
+In the browser, `^N` opens the same as a dialog. `Tab` completes the directory like a shell, with the directories you started sessions in before listed first and git repositories marked, and `↑` `↓` or `Enter` move between the fields, `Enter` in the last one starts, and `Esc` goes back to the list. The directory must exist (`~` and `$HOME` are expanded, and the default is the current directory). The words after the options are the first message; start them with `--` if the message begins with a dash. The flags from `SESSIONS_CLAUDE_ARGS` are passed to `claude` first, as when resuming.
 
 The tickets and the title travel in the environment variable `SESSIONS_PRESET`, which Claude Code passes on to its hooks. That is how it behaved in version 2.1.296, when I tried it; it is not a documented promise and may change. The hook uses the preset only for a new session at startup, and tells the agent which tickets the session was started for. Without the hook (see [Set up the hook](#set-up-the-hook)) the session still starts, but nothing is recorded.
 

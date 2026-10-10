@@ -6,8 +6,9 @@ mod app;
 mod draw;
 mod input;
 
+use crate::launch::{self, NewSession};
 use crate::store::{self, Session};
-use crate::{launch, transcript};
+use crate::transcript;
 use anyhow::Result;
 use app::{App, Mode};
 use input::event_loop;
@@ -18,9 +19,11 @@ use ratatui::{
 use std::collections::HashSet;
 
 /// What to run after the TUI has closed.
-pub(super) struct Launch {
-    pub(super) session: Session,
-    pub(super) args: Vec<String>,
+pub(super) enum Launch {
+    /// Resume a session, with extra flags for `claude`.
+    Resume { session: Session, args: Vec<String> },
+    /// Start a new one, with the flags from `SESSIONS_CLAUDE_ARGS`.
+    New { new: NewSession, args: Vec<String> },
 }
 
 pub fn run() -> Result<()> {
@@ -63,9 +66,11 @@ pub fn run() -> Result<()> {
     let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
 
-    if let Some(Launch { session, args }) = result? {
-        // Replaces this process; only returns on failure.
-        return Err(launch::resume(&session, &args));
+    // Replaces this process; only returns on failure.
+    match result? {
+        Some(Launch::Resume { session, args }) => return Err(launch::resume(&session, &args)),
+        Some(Launch::New { new, args }) => return Err(launch::start(&new, &args)),
+        None => {}
     }
     Ok(())
 }
